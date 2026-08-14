@@ -70,6 +70,7 @@ import {
   getMainLoopModelSettingsSlot,
   parseUserSpecifiedModel,
 } from './utils/model/model.js'
+import { buildAvailabilityFallbackChain } from './utils/model/modelFallback.js'
 import { loadAllPluginsCacheOnly } from './utils/plugins/pluginLoader.js'
 import {
   type ProcessUserInputContext,
@@ -267,7 +268,11 @@ export class QueryEngine {
     const initialMainLoopModel = userSpecifiedModel
       ? parseUserSpecifiedModel(userSpecifiedModel)
       : getMainLoopModel()
-    const resolvedFallbackModels = fallbackModel?.map(model =>
+    // Collapsed here too, not only in query(): the SDK surface reports the
+    // resolved chain, and a chain it advertises but can never use is a lie.
+    const resolvedFallbackModels = buildAvailabilityFallbackChain(
+      fallbackModel,
+    )?.map(model =>
       parseUserSpecifiedModel(
         model === 'default' ? getDefaultMainLoopModel() : model,
       ),

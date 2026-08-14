@@ -9,7 +9,11 @@ import { z } from 'zod/v4'
 import { SandboxSettingsSchema } from '../../entrypoints/sandboxTypes.js'
 import { isEnvTruthy } from '../config/envUtils.js'
 import { lazySchema } from '../collections/lazySchema.js'
-import { PERMISSION_MODES } from '../permissions/PermissionMode.js'
+import {
+  PERMISSION_MODE_INPUTS,
+  type PermissionMode,
+  normalizePermissionModeAlias,
+} from '../../types/permissions.js'
 import { MarketplaceSourceSchema } from '../plugins/schemas.js'
 import { THEME_SETTINGS } from '../terminal/themeNames.js'
 import { CLAUDE_CODE_SETTINGS_SCHEMA_URL } from './constants.js'
@@ -60,8 +64,28 @@ export const PermissionsSchema = lazySchema(() =>
         .describe(
           'List of permission rules that should always prompt for confirmation',
         ),
-      defaultMode: z
-        .enum(PERMISSION_MODES)
+      // 'manual' is an input-only alias for 'default' (upstream renamed the
+      // mode on its input surface). It is accepted and normalized in place so
+      // the parsed value downstream is always a real PermissionMode — and,
+      // more importantly, so a settings.json copied from an official install
+      // does not fail validation. occ skips the ENTIRE file on a schema error
+      // (see InvalidSettingsDialog), so one unknown enum member would silently
+      // drop every other setting in it.
+      //
+      // `.overwrite()` rather than `.transform()`: transform turns the field
+      // into a ZodPipe, which `toJSONSchema` renders as `{}` — the published
+      // settings schema would lose the enum and editors would stop completing
+      // permission modes.
+      defaultMode: (
+        z
+          .enum(PERMISSION_MODE_INPUTS)
+          .overwrite(
+            value =>
+              normalizePermissionModeAlias(
+                value,
+              ) as (typeof PERMISSION_MODE_INPUTS)[number],
+          ) as unknown as z.ZodType<PermissionMode>
+      )
         .optional()
         .describe('Default permission mode when Claude Code needs access'),
       disableBypassPermissionsMode: z
@@ -527,6 +551,19 @@ export const SettingsSchema = lazySchema(() =>
             'If undefined, all models are available. If empty array, only the default model is available. ' +
             'Typically set in managed settings by enterprise administrators.',
         ),
+      // Fail closed: a present-but-invalid value must not silently widen the
+      // allowlist. An absent value stays undefined (enforcement off).
+      enforceAvailableModels: z
+        .boolean()
+        .optional()
+        .catch(true)
+        .describe(
+          'When true and availableModels is a non-empty array, the Default model selection is also ' +
+            'constrained: if the default model for the user tier is not in availableModels, Default ' +
+            'resolves to the first allowed availableModels entry instead. Has no effect when ' +
+            'availableModels is unset or an empty array. Typically set in managed settings by ' +
+            'enterprise administrators.',
+        ),
       modelOverrides: z
         .record(z.string(), z.string())
         .optional()
@@ -590,6 +627,16 @@ export const SettingsSchema = lazySchema(() =>
             .describe(
               'Directories to include when creating worktrees, via git sparse-checkout (cone mode). ' +
                 'Dramatically faster in large monorepos — only the listed paths are written to disk.',
+            ),
+          baseRef: z
+            .enum(['fresh', 'head'])
+            .optional()
+            .catch(undefined)
+            .describe(
+              "Which ref new worktrees branch from. 'fresh' (default) branches from " +
+                'origin/<default-branch> for a clean tree. ' +
+                "'head' branches from your current local HEAD so unpushed commits and " +
+                'feature-branch state are present.',
             ),
         })
         .optional()
@@ -937,6 +984,23 @@ export const SettingsSchema = lazySchema(() =>
         .boolean()
         .optional()
         .describe('Whether to disable syntax highlighting in diffs'),
+      workflowSizeGuideline: z
+        .enum(['unrestricted', 'small', 'medium', 'large'])
+        .optional()
+        .catch(undefined)
+        .describe(
+          'Advisory agent-count guideline appended to the Workflow tool prompt. ' +
+            '"small" aims for fewer than 5 agents, "medium" fewer than 15, "large" fewer than 50, ' +
+            'and "unrestricted" sends no guideline. Absent also sends no guideline. ' +
+            'This is a guideline, not an enforced limit.',
+        ),
+      axScreenReader: z
+        .boolean()
+        .optional()
+        .describe(
+          'Render screen-reader friendly output (flat text, no decorative borders or animations). ' +
+            'Overridden by the CLAUDE_AX_SCREEN_READER env var and the --ax-screen-reader CLI flag.',
+        ),
       theme: z
         .enum(THEME_SETTINGS)
         .optional()
@@ -1081,6 +1145,18 @@ export const SettingsSchema = lazySchema(() =>
         .enum(['latest', 'stable'])
         .optional()
         .describe('Release channel for auto-updates (latest or stable)'),
+      requiredMinimumVersion: z
+        .string()
+        .optional()
+        .describe(
+          'Minimum version required to start. If the running version is older, the CLI exits at startup with instructions to update. Only enforced from managed (policy) settings.',
+        ),
+      requiredMaximumVersion: z
+        .string()
+        .optional()
+        .describe(
+          'Maximum version allowed to start. If the running version is newer, the CLI exits at startup with instructions to install an approved version. Only enforced from managed (policy) settings.',
+        ),
       ...(feature('LODESTONE')
         ? {
             disableDeepLinkRegistration: z

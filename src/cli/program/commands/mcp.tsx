@@ -1,6 +1,7 @@
 // Extracted verbatim from the former `run()` in src/main.tsx (S7-4b split).
 import type { Command as CommanderCommand } from '@commander-js/extra-typings';
 import { registerMcpAddCommand } from 'src/commands/mcp/addCommand.js';
+import { registerMcpAuthCommands } from 'src/commands/mcp/authCommands.js';
 import { registerMcpXaaIdpCommand } from 'src/commands/mcp/xaaIdpCommand.js';
 import { isXaaEnabled } from 'src/services/mcp/xaaIdpLogin.js';
 import { createSortedHelpConfig } from '../helpConfig.js';
@@ -26,6 +27,7 @@ export function registerMcpCommands(program: CommanderCommand): void {
 
   // Register the mcp add subcommand (extracted for testability)
   registerMcpAddCommand(mcp);
+  registerMcpAuthCommands(mcp);
 
   if (isXaaEnabled()) {
     registerMcpXaaIdpCommand(mcp);

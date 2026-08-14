@@ -246,6 +246,22 @@ function worktreePathFor(repoRoot: string, slug: string): string {
  * prevents unconditionally running `git fetch` (which can hang waiting for credentials)
  * on every resume.
  */
+/**
+ * `settings.worktree.baseRef === 'head'` — branch new worktrees from the local
+ * HEAD instead of `origin/<default-branch>`.
+ *
+ * Wanted when the work being isolated builds on unpushed commits or on the
+ * feature branch that is checked out: the `fresh` default would silently drop
+ * all of it, and the agent would start from a tree that does not contain the
+ * code it was asked about.
+ *
+ * A `--worktree` for a PR always wins over this — that request names its own
+ * base — so the caller checks `prNumber` first.
+ */
+export function shouldBranchFromLocalHead(): boolean {
+  return getInitialSettings().worktree?.baseRef === 'head'
+}
+
 async function getOrCreateWorktree(
   repoRoot: string,
   slug: string,
@@ -288,6 +304,10 @@ async function getOrCreateWorktree(
       )
     }
     baseBranch = 'FETCH_HEAD'
+  } else if (shouldBranchFromLocalHead()) {
+    // No fetch here — HEAD is by definition already local. The shared
+    // rev-parse below resolves it to a SHA.
+    baseBranch = 'HEAD'
   } else {
     // If origin/<branch> already exists locally, skip fetch. In large repos
     // (210k files, 16M objects) fetch burns ~6-8s on a local commit-graph

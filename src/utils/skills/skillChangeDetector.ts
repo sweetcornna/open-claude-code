@@ -1,10 +1,14 @@
 import { PROJECT_DIR_NAME } from 'src/config/paths.js'
 import chokidar, { type FSWatcher } from 'chokidar'
 import * as platformPath from 'path'
-import { getAdditionalDirectoriesForClaudeMd } from '../../bootstrap/state.js'
+import {
+  getAdditionalDirectoriesForClaudeMd,
+  getProjectRoot,
+} from '../../bootstrap/state.js'
 import {
   clearCommandMemoizationCaches,
   clearCommandsCache,
+  getSkillToolCommands,
 } from '../../commands.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -276,11 +280,61 @@ function scheduleReload(changedPath: string): void {
       )
       return
     }
-    clearSkillCaches()
-    clearCommandsCache()
-    resetSentSkillNames()
-    skillsChanged.emit()
+    applyReload()
   }, testOverrides?.reloadDebounce ?? RELOAD_DEBOUNCE_MS)
+}
+
+/**
+ * Drop every cached view of the skill tree and tell subscribers to re-read it.
+ *
+ * Exported so `/reload-skills` runs the *same* body the watcher's debounced
+ * timer runs. Splitting it would let the manual path drift from the automatic
+ * one — and the failure mode is invisible: caches cleared but
+ * `skillsChanged.emit()` skipped leaves the REPL's `localCommands` holding the
+ * pre-reload list, so the new skill exists everywhere except the slash menu.
+ *
+ * The ConfigChange hook is deliberately not fired here. It exists so policy can
+ * veto a reload the *watcher* triggered; an explicit user command is not a disk
+ * event and must not be silently swallowed by a hook.
+ */
+export function applyReload(): void {
+  clearSkillCaches()
+  clearCommandsCache()
+  resetSentSkillNames()
+  skillsChanged.emit()
+}
+
+export type SkillReloadReport = {
+  /** Model-invocable skills visible after the reload. */
+  total: number
+  added: number
+  removed: number
+}
+
+/**
+ * `applyReload()` bracketed by a before/after skill census, for /reload-skills.
+ *
+ * Lives here rather than in the command because the two reads have to bracket
+ * the cache clear to mean anything, and because this module already owns the
+ * edges to `commands.ts` and `bootstrap/state.ts` — importing them from
+ * `commands/reload-skills/` instead adds import cycles the ratchet counts.
+ */
+export async function reloadSkillsWithReport(): Promise<SkillReloadReport> {
+  const cwd = getProjectRoot()
+  // Memoized by cwd, so this read is the cached pre-reload list; the one after
+  // applyReload() is a genuine disk re-scan.
+  const before = new Set((await getSkillToolCommands(cwd)).map(c => c.name))
+
+  applyReload()
+
+  const after = await getSkillToolCommands(cwd)
+  const afterNames = new Set(after.map(c => c.name))
+
+  return {
+    total: after.length,
+    added: after.filter(c => !before.has(c.name)).length,
+    removed: [...before].filter(name => !afterNames.has(name)).length,
+  }
 }
 
 /**
@@ -312,5 +366,7 @@ export const skillChangeDetector = {
   initialize,
   dispose,
   subscribe,
+  applyReload,
+  reloadSkillsWithReport,
   resetForTesting,
 }

@@ -40,8 +40,9 @@ export const TaskStopTool = buildTool({
   name: TASK_STOP_TOOL_NAME,
   searchHint: 'kill a running background task',
   // KillShell is the deprecated name - kept as alias for backward compatibility
-  // with existing transcripts and SDK users
-  aliases: ['KillShell'],
+  // with existing transcripts and SDK users. KillBash is upstream Claude Code's
+  // spelling; models that learned it call it verbatim.
+  aliases: ['KillShell', 'KillBash'],
   maxResultSizeChars: 100_000,
   userFacingName: () => (process.env.USER_TYPE === 'ant' ? '' : 'Stop Task'),
   get inputSchema(): InputSchema {

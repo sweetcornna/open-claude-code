@@ -464,6 +464,24 @@ describe('Opus 4.7 Prompt Engineering Audit', () => {
       expect(prompt).toContain('report the outcome')
     })
 
+    test('parallel tool calls: permission AND the dependency constraint', async () => {
+      // 两半都是锚点。只留许可 → 模型把有依赖的调用也并行发；只留约束 →
+      // 读成「禁止并行」，退回逐个 round-trip。上游同一条也是双向写的。
+      const prompt = await getFullPrompt()
+      expect(prompt).toContain('call multiple tools in a single response')
+      expect(prompt).toContain('independent tool calls in parallel')
+      expect(prompt).toContain('run them sequentially instead')
+    })
+
+    test('git status before anything that can discard uncommitted work', async () => {
+      // 这一节其余的逐条举例是有意删掉的（见下面的瘦身反向断言），
+      // 但这条不是举例而是一条可执行的前置动作 —— 模型无法从
+      // 「小心不可逆操作」推出「先跑 git status 再 stash -u」。
+      const prompt = await getFullPrompt()
+      expect(prompt).toContain('run `git status` before any command')
+      expect(prompt).toContain('`-u` for untracked')
+    })
+
     test('CYBER_RISK_INSTRUCTION: allows security testing', async () => {
       const prompt = await getFullPrompt()
       // TS 允许安全测试 (TXT 完全禁止 — 这是有意的差异)

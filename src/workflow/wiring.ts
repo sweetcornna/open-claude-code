@@ -7,6 +7,7 @@ import {
   type WorkflowToolDescriptor,
 } from '@open-claude-code/workflow-engine'
 import { buildTool, type Tool } from '../Tool.js'
+import { getInitialSettings } from '../utils/settings/settings.js'
 import type { PermissionResult } from '../utils/permissions/PermissionResult.js'
 import { getRuleByContentsForToolName } from '../utils/permissions/contentRuleLookup.js'
 import {
@@ -115,6 +116,12 @@ function buildWorkflowTool(): Tool {
         // on first tool use, long after startup, so the env is settled by then.
         ...(envConcurrency !== undefined
           ? { defaultMaxConcurrency: envConcurrency }
+          : {}),
+        // Same reason as above: the engine reads no settings, so the host
+        // resolves settings.workflowSizeGuideline and hands it over. Absent
+        // means "no guideline", which leaves the prompt byte-identical.
+        ...(getInitialSettings().workflowSizeGuideline !== undefined
+          ? { sizeGuideline: getInitialSettings().workflowSizeGuideline }
           : {}),
       })
     }

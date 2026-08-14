@@ -10,6 +10,7 @@ import {
   registerSpawn,
   unregisterSpawn,
 } from './spawnLimits.js'
+import { getAppendSubagentSystemPrompt } from '@open-claude-code/tool-runtime/cliSessionOptions.js'
 import { isSessionBudgetExhausted } from 'src/cost-tracker.js'
 import uniqBy from 'lodash-es/uniqBy.js'
 import { logForDebugging } from 'src/utils/telemetry/debug.js'
@@ -724,7 +725,7 @@ export async function* runAgent({
     appState.toolPermissionContext.additionalWorkingDirectories.keys(),
   )
 
-  const agentSystemPrompt = override?.systemPrompt
+  const baseAgentSystemPrompt = override?.systemPrompt
     ? override.systemPrompt
     : asSystemPrompt(
         await getAgentSystemPrompt(
@@ -735,6 +736,17 @@ export async function* runAgent({
           resolvedTools,
         ),
       )
+
+  // --append-subagent-system-prompt. Skipped for fork children: their whole
+  // point is a byte-identical prefix with the parent, and the parent's system
+  // prompt never carries this addendum. Nested subagents inherit it because
+  // the store is process-scoped, matching upstream's explicit propagation.
+  const subagentAddendum = useExactTools
+    ? undefined
+    : getAppendSubagentSystemPrompt()
+  const agentSystemPrompt = subagentAddendum
+    ? asSystemPrompt([...baseAgentSystemPrompt, subagentAddendum])
+    : baseAgentSystemPrompt
 
   // Determine abortController:
   // - Override takes precedence

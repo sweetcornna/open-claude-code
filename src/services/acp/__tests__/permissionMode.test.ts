@@ -15,7 +15,9 @@
  */
 import { afterEach, describe, expect, test } from 'bun:test'
 import { resolveInitialPermissionModeFallback } from '../../../utils/permissions/PermissionMode.js'
+import { PERMISSION_MODE_INPUT_ALIASES } from '../../../types/permissions.js'
 import { resolveSessionPermissionMode } from '../agent/permissionMode.js'
+import { resolvePermissionMode } from '../utils.js'
 
 const originalRemote = process.env.CLAUDE_CODE_REMOTE
 
@@ -99,5 +101,37 @@ describe('ACP is treated as an interactive session', () => {
         isNonInteractiveSession: true,
       }),
     ).toBe('default')
+  })
+})
+
+/**
+ * The ACP resolver keeps its own case-folded alias table because editor
+ * plugins spell the modes every which way. It was the third copy of the alias
+ * set in the repo and the only one that had drifted: `manual` — upstream's
+ * input alias for `default`, accepted on the CLI and in settings.json — threw
+ * here, so an editor forwarding a config it had just validated got
+ * `Invalid permissions.defaultMode: manual`.
+ */
+describe('resolvePermissionMode accepts the shared input aliases', () => {
+  test('manual resolves to default, like every other input surface', () => {
+    expect(resolvePermissionMode('manual')).toBe('default')
+  })
+
+  test('input aliases are case-folded like the rest of this table', () => {
+    expect(resolvePermissionMode('  MANUAL  ')).toBe('default')
+  })
+
+  test('every shared alias resolves, so a fourth copy cannot drift', () => {
+    for (const [alias, mode] of Object.entries(PERMISSION_MODE_INPUT_ALIASES)) {
+      expect(resolvePermissionMode(alias)).toBe(mode)
+    }
+  })
+
+  test('real modes and genuinely unknown values are unaffected', () => {
+    expect(resolvePermissionMode('acceptEdits')).toBe('acceptEdits')
+    expect(resolvePermissionMode(undefined)).toBe('default')
+    expect(() => resolvePermissionMode('handsfree')).toThrow(
+      /Invalid permissions\.defaultMode: handsfree/,
+    )
   })
 })

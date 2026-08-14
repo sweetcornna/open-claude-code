@@ -49,6 +49,9 @@ export const ListMcpResourcesTool = buildTool({
   },
   shouldDefer: true,
   name: LIST_MCP_RESOURCES_TOOL_NAME,
+  // Upstream Claude Code names this tool `ListMcpResources` (no `Tool`
+  // suffix); models that learned that name call it verbatim.
+  aliases: ['ListMcpResources'],
   searchHint: 'list resources from connected MCP servers',
   maxResultSizeChars: 100_000,
   async description() {

@@ -7,11 +7,18 @@ export function registerAgentsCommand(program: CommanderCommand): void {
     .command('agents')
     .description('View running and recent sessions (use --list for configured agents)')
     .option('--list', 'Print configured agent definitions instead of the interactive session list')
+    .option('--json', 'Print the running and recent sessions as a JSON array (no TTY required)')
+    .option('--all', 'With --json, also include ended (resumable) sessions')
+    .option('--cwd <dir>', 'With --json, only include sessions whose working directory is this directory or below')
     .option('--setting-sources <sources>', 'Comma-separated list of setting sources to load (user, project, local).')
     .action(async options => {
       // Everything below stays behind `await import()`: a top-level import here
       // would load the Ink tree on the print-mode path too. See run.tsx.
-      const { agentsHandler, shouldMountFleetView } = await import('src/cli/handlers/agents.js');
+      const { agentsHandler, agentsJsonHandler, shouldMountFleetView } = await import('src/cli/handlers/agents.js');
+      if (options.json) {
+        await agentsJsonHandler({ all: options.all, cwd: options.cwd });
+        process.exit(typeof process.exitCode === 'number' ? process.exitCode : 0);
+      }
       if (
         shouldMountFleetView(options, {
           stdoutIsTTY: process.stdout.isTTY,

@@ -83,9 +83,41 @@ function concurrencyTiers(effectiveDefault: number): number[] {
  * overridden by the host (OCC_WORKFLOW_MAX_CONCURRENCY), and a prompt quoting the compiled-in
  * constant would describe a run behaviour that no longer exists on this machine.
  */
+/**
+ * Advisory agent-count ceilings for `settings.workflowSizeGuideline`.
+ * Advisory on purpose: the engine enforces concurrency, not fan-out width,
+ * and a hard cap here would break legitimately wide workflows.
+ */
+const WORKFLOW_SIZE_AGENT_LIMITS = {
+  small: 5,
+  medium: 15,
+  large: 50,
+} as const
+
+export type WorkflowSizeGuideline =
+  | 'unrestricted'
+  | keyof typeof WORKFLOW_SIZE_AGENT_LIMITS
+
+/**
+ * The guideline sentence, or '' when no guideline applies.
+ *
+ * Deliberately empty when the setting is absent — upstream defaults to
+ * "medium" and always emits the sentence, but occ's Workflow prompt lands in
+ * the cached tool block, so making the default emit would move those bytes
+ * for every existing user. Opt-in keeps the untouched prompt byte-identical.
+ */
+export function workflowSizeGuidelineSection(
+  guideline: WorkflowSizeGuideline | undefined,
+): string {
+  if (guideline === undefined || guideline === 'unrestricted') return ''
+  const limit = WORKFLOW_SIZE_AGENT_LIMITS[guideline]
+  return `\n\nWorkflow size guideline: ${guideline} — keep workflows under ${limit} agents. This is a guideline, not a hard limit — follow it unless the user's prompt calls for a different scale.`
+}
+
 function buildWorkflowToolPrompt(opts: {
   workflowDir: string
   defaultMaxConcurrency: number
+  sizeGuideline?: WorkflowSizeGuideline
 }): string {
   const d = opts.defaultMaxConcurrency
   return `Use the Workflow tool to execute, inspect, or cancel workflow runs. operation "run" is the backward-compatible default; its script runs in the background and returns a run_id immediately. Use operation "status" (alias "query") with runId to inspect live or persisted terminal progress. Use operation "cancel" with runId to cancel the whole run, or add agentId to cancel exactly one active child agent.
@@ -105,7 +137,7 @@ Script execution model (common pitfalls — getting these wrong is the #1 cause 
 - Do NOT use TS type annotations, \`interface\`, \`enum\`, \`as\`, or generics — the engine does not transpile, so even a .ts file with type syntax fails to parse.
 - Keep EXACTLY ONE \`export const meta = {...}\` (plain literal) and remove every other \`export\` / \`export default\`.
 - Return the result with a top-level \`return\`.
-Prefer .js / .mjs.`
+Prefer .js / .mjs.${workflowSizeGuidelineSection(opts.sizeGuideline)}`
 }
 
 export type WorkflowToolOptions = {
@@ -117,6 +149,12 @@ export type WorkflowToolOptions = {
    * OCC_WORKFLOW_MAX_CONCURRENCY and passes it in — this package reads no process.env.
    */
   defaultMaxConcurrency?: number
+  /**
+   * Advisory agent-count guideline appended to the tool prompt. The host
+   * resolves it from settings.workflowSizeGuideline and passes it in — this
+   * package reads no settings and no process.env.
+   */
+  sizeGuideline?: WorkflowSizeGuideline
 }
 
 export function createWorkflowTool(
@@ -146,6 +184,7 @@ export function createWorkflowTool(
         workflowDir: options.workflowDir ?? WORKFLOW_DIR_NAME,
         defaultMaxConcurrency:
           options.defaultMaxConcurrency ?? DEFAULT_MAX_CONCURRENCY,
+        sizeGuideline: options.sizeGuideline,
       })
     },
 

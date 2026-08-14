@@ -34,4 +34,11 @@ describe('shouldMountFleetView', () => {
   test('a fully non-interactive invocation falls back', () => {
     expect(shouldMountFleetView({}, {})).toBe(false)
   })
+
+  test('--json never mounts a TUI, TTY or not', () => {
+    // The machine-readable surface: mounting Ink over it would corrupt the
+    // JSON a caller is parsing.
+    expect(shouldMountFleetView({ json: true }, TTY)).toBe(false)
+    expect(shouldMountFleetView({ json: true }, {})).toBe(false)
+  })
 })

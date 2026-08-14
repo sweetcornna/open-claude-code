@@ -9,7 +9,10 @@ import { InvalidArgumentError, Option, type Command as CommanderCommand } from '
 import { feature } from 'bun:bundle';
 import { BIN_NAME, DISPLAY_NAME } from 'src/constants/brand.js';
 import { canUserConfigureAdvisor } from 'src/utils/agents/advisor.js';
-import { PERMISSION_MODES } from 'src/utils/permissions/PermissionMode.js';
+import { EFFORT_LEVELS } from 'src/utils/model/effort.js';
+// Imported from the pure type module (not utils/permissions/PermissionMode.js)
+// so registering CLI options does not drag the permission runtime in.
+import { PERMISSION_MODE_CLI_CHOICES, parsePermissionMode } from 'src/types/permissions.js';
 import { parseAutoCompactWindowInput } from 'src/services/compact/autoCompactWindowValue.js';
 
 export function applyRootOptions(program: CommanderCommand) {
@@ -79,6 +82,11 @@ export function applyRootOptions(program: CommanderCommand) {
       .option(
         '--include-partial-messages',
         'Include partial message chunks as they arrive (only works with --print and --output-format=stream-json)',
+        () => true,
+      )
+      .option(
+        '--forward-subagent-text',
+        'Forward subagent text and thinking blocks as assistant/user messages with parent_tool_use_id set (only works with --print and --output-format=stream-json)',
         () => true,
       )
       .addOption(
@@ -193,9 +201,37 @@ export function applyRootOptions(program: CommanderCommand) {
           .hideHelp(),
       )
       .addOption(
-        new Option('--permission-mode <mode>', 'Permission mode to use for the session')
+        new Option(
+          '--append-subagent-system-prompt <prompt>',
+          "Append a system prompt to every Task-tool subagent's system prompt, propagated to nested subagents (only works with --print). Implies CLAUDE_CODE_ENABLE_APPEND_SUBAGENT_PROMPT=1.",
+        )
           .argParser(String)
-          .choices(PERMISSION_MODES),
+          .hideHelp(),
+      )
+      .addOption(
+        new Option(
+          '--plan-mode-instructions <instructions>',
+          'Custom workflow body for plan mode. Replaces the default code-implementation phases in the plan-mode system reminder; the read-only enforcement preamble and ExitPlanMode protocol footer are always kept.',
+        )
+          .argParser(String)
+          .hideHelp(),
+      )
+      // `.choices()` is what --help advertises; `.argParser()` (registered
+      // after, so it wins) is what actually validates. That split is deliberate
+      // and matches upstream: 'default' stays accepted but is no longer
+      // advertised, and the 'manual' spelling an official settings.json/flag
+      // uses is normalized back to 'default' here so no downstream mode
+      // comparison ever sees it.
+      .addOption(
+        new Option('--permission-mode <mode>', 'Permission mode to use for the session')
+          .choices(PERMISSION_MODE_CLI_CHOICES)
+          .argParser((rawValue: string) => {
+            const parsed = parsePermissionMode(rawValue);
+            if (!parsed) {
+              throw new InvalidArgumentError(`Allowed choices are ${PERMISSION_MODE_CLI_CHOICES.join(', ')}.`);
+            }
+            return parsed;
+          }),
       )
       .option('-c, --continue', 'Continue the most recent conversation in the current directory', () => true)
       .option(
@@ -276,13 +312,16 @@ export function applyRootOptions(program: CommanderCommand) {
         '--model <model>',
         `Model for the current session. Provide an alias for the latest model (e.g. 'sonnet' or 'opus') or a model's full name (e.g. 'claude-sonnet-4-6').`,
       )
+      // The allowed set is derived from EFFORT_LEVELS, never hand-copied: the
+      // hand-written list here used to omit 'xhigh', which is the factory
+      // default for most provider families (see tierDefaults.ts), so
+      // `--effort xhigh` was rejected while the settings/UI paths accepted it.
       .addOption(
-        new Option('--effort <level>', `Effort level for the current session (low, medium, high, max)`).argParser(
+        new Option('--effort <level>', `Effort level for the current session (${EFFORT_LEVELS.join(', ')})`).argParser(
           (rawValue: string) => {
             const value = rawValue.toLowerCase();
-            const allowed = ['low', 'medium', 'high', 'max'];
-            if (!allowed.includes(value)) {
-              throw new InvalidArgumentError(`It must be one of: ${allowed.join(', ')}`);
+            if (!(EFFORT_LEVELS as readonly string[]).includes(value)) {
+              throw new InvalidArgumentError(`It must be one of: ${EFFORT_LEVELS.join(', ')}`);
             }
             return value;
           },
@@ -330,7 +369,17 @@ export function applyRootOptions(program: CommanderCommand) {
       // --plugin-dir takes exactly one arg; repeat the flag for multiple dirs.
       .option(
         '--plugin-dir <path>',
-        'Load plugins from a directory for this session only (repeatable: --plugin-dir A --plugin-dir B)',
+        'Load plugins from a directory or .zip archive for this session only (repeatable: --plugin-dir A --plugin-dir B)',
+        (val: string, prev: string[]) => [...prev, val],
+        [] as string[],
+      )
+      // Same accumulator shape as --plugin-dir; the two lists are concatenated
+      // in preAction. Kept as a separate flag so the help text can say
+      // "https .zip only" — the URL path has its own refusals (no embedded
+      // credentials, no redirects, size/entry caps) that a directory does not.
+      .option(
+        '--plugin-url <url>',
+        'Download a plugin .zip over https for this session only (repeatable: --plugin-url A --plugin-url B)',
         (val: string, prev: string[]) => [...prev, val],
         [] as string[],
       )
@@ -343,6 +392,20 @@ export function applyRootOptions(program: CommanderCommand) {
 }
 
 export function applyExtraRootOptions(program: CommanderCommand): void {
+  // `--bg`/`--background` never reaches this handler: `src/entrypoints/cli.tsx`
+  // intercepts it before Commander parses (same fast path as `stop`/`rm`) and
+  // routes it into `handleBgStart`. The registration exists purely so the flag
+  // is documented in `--help` — an undocumented flag is indistinguishable from
+  // a missing one. It is feature-gated to match the fast path: with
+  // BG_SESSIONS off, `--bg` must still fail as an unknown option rather than
+  // silently do nothing.
+  if (feature('BG_SESSIONS')) {
+    program.option(
+      '--bg, --background',
+      `Start the session as a background agent and return immediately (manage with \`${BIN_NAME} agents\`)`,
+    );
+  }
+
   // Worktree flags
   program.option('-w, --worktree [name]', 'Create a new git worktree for this session (optionally specify a name)');
   program.option(
@@ -403,6 +466,14 @@ export function applyExtraRootOptions(program: CommanderCommand): void {
   if (feature('KAIROS')) {
     program.addOption(new Option('--assistant', 'Force assistant mode (Agent SDK daemon use)').hideHelp());
   }
+  // Accessibility is never feature-gated: a user who needs flat output needs
+  // it in every build.
+  program.addOption(
+    new Option(
+      '--ax-screen-reader',
+      'Render screen-reader friendly output (flat text, no decorative borders or animations).',
+    ),
+  );
   program.addOption(
     new Option(
       '--channels <servers...>',

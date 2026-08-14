@@ -1,6 +1,8 @@
 // Extracted verbatim from the former `run()` in src/main.tsx (S7-4b split).
 import { Option, type Command as CommanderCommand } from '@commander-js/extra-typings';
 import { VALID_INSTALLABLE_SCOPES, VALID_UPDATE_SCOPES } from 'src/services/plugins/pluginCliCommands.js';
+import { registerPluginDetailsCommand } from 'src/commands/plugin/detailsCommand.js';
+import { registerPluginEvalCommand } from 'src/commands/plugin/evalCommand.js';
 import { createSortedHelpConfig } from '../helpConfig.js';
 
 export function registerPluginCommands(program: CommanderCommand): void {
@@ -19,6 +21,9 @@ export function registerPluginCommands(program: CommanderCommand): void {
     .alias('plugins')
     .description('Manage Claude Code plugins')
     .configureHelp(createSortedHelpConfig());
+
+  registerPluginDetailsCommand(pluginCmd, coworkOption);
+  registerPluginEvalCommand(pluginCmd, coworkOption);
 
   pluginCmd
     .command('validate <path>')

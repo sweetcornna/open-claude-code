@@ -1,6 +1,8 @@
 import { feature } from 'bun:bundle'
 import { registerBatchSkill } from './batch.js'
 import { registerDebugSkill } from './debug.js'
+import { registerExplainUsageSkill } from './explainUsage.js'
+import { registerFewerPermissionPromptsSkill } from './fewerPermissionPrompts.js'
 import { registerKeybindingsSkill } from './keybindings.js'
 import { registerLoremIpsumSkill } from './loremIpsum.js'
 import { registerRememberSkill } from './remember.js'
@@ -33,6 +35,8 @@ export function initBundledSkills(): void {
   registerSimplifySkill()
   registerUseArtifactsSkill()
   registerBatchSkill()
+  registerExplainUsageSkill()
+  registerFewerPermissionPromptsSkill()
   if (feature('WORKFLOW_SCRIPTS')) {
     // The whole skill is a manual for the Workflow tool. With WORKFLOW_SCRIPTS
     // compiled out that tool does not exist, so registering it would advertise

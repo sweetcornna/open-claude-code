@@ -25,18 +25,57 @@ import { getFsImplementation } from '../filesystem/fsOperations.js'
  * that env var from settings.json at CLI init; this module stays config-free
  * so `proxy.ts`/`mtls.ts` don't transitively pull in the command registry.
  */
+/** Trust stores `CLAUDE_CODE_CERT_STORE` can select. */
+export type CertStoreSource = 'bundled' | 'system'
+
+const CERT_STORE_SOURCES: readonly CertStoreSource[] = ['bundled', 'system']
+
+/**
+ * Parse `CLAUDE_CODE_CERT_STORE`: a comma-separated, case-insensitive list of
+ * `bundled` / `system`. Unrecognized entries are dropped with a warning.
+ *
+ * Returns undefined when the variable is unset or contained nothing usable —
+ * callers then fall back to the `--use-system-ca` / `--use-openssl-ca`
+ * behavior, so an unset variable changes nothing.
+ */
+export function parseCertStoreSources(
+  raw: string | undefined,
+): CertStoreSource[] | undefined {
+  if (!raw) return undefined
+  const sources: CertStoreSource[] = []
+  for (const entry of raw.split(',')) {
+    const normalized = entry.trim().toLowerCase()
+    if (!normalized) continue
+    if ((CERT_STORE_SOURCES as readonly string[]).includes(normalized)) {
+      const source = normalized as CertStoreSource
+      if (!sources.includes(source)) sources.push(source)
+    } else {
+      logForDebugging(
+        `CA certs: unrecognized CLAUDE_CODE_CERT_STORE source '${normalized}', ignoring`,
+        { level: 'warn' },
+      )
+    }
+  }
+  return sources.length > 0 ? sources : undefined
+}
+
 export const getCACertificates = memoize((): string[] | undefined => {
-  const useSystemCA =
-    hasNodeOption('--use-system-ca') || hasNodeOption('--use-openssl-ca')
+  // CLAUDE_CODE_CERT_STORE, when it parses to something, is authoritative and
+  // outranks the --use-system-ca / --use-openssl-ca node options.
+  const certStore = parseCertStoreSources(process.env.CLAUDE_CODE_CERT_STORE)
+  const useSystemCA = certStore
+    ? certStore.includes('system')
+    : hasNodeOption('--use-system-ca') || hasNodeOption('--use-openssl-ca')
+  const useBundledCA = certStore ? certStore.includes('bundled') : false
 
   const extraCertsPath = process.env.NODE_EXTRA_CA_CERTS
 
   logForDebugging(
-    `CA certs: useSystemCA=${useSystemCA}, extraCertsPath=${extraCertsPath}`,
+    `CA certs: useSystemCA=${useSystemCA}, certStore=${certStore?.join(',') ?? 'unset'}, extraCertsPath=${extraCertsPath}`,
   )
 
-  // If neither is set, return undefined (use runtime defaults, no override)
-  if (!useSystemCA && !extraCertsPath) {
+  // If nothing selects a store, return undefined (use runtime defaults).
+  if (!useSystemCA && !useBundledCA && !extraCertsPath) {
     return undefined
   }
 
@@ -50,6 +89,15 @@ export const getCACertificates = memoize((): string[] | undefined => {
 
   const certs: string[] = []
 
+  // `CLAUDE_CODE_CERT_STORE=bundled,system` wants both stores, so bundled goes
+  // in first and the system branch below appends to it rather than replacing.
+  if (useBundledCA) {
+    certs.push(...tls.rootCertificates)
+    logForDebugging(
+      `CA certs: Loaded ${certs.length} bundled root certificates (CLAUDE_CODE_CERT_STORE)`,
+    )
+  }
+
   if (useSystemCA) {
     // Load system CA store (Bun API)
     const getCACerts = (
@@ -59,23 +107,23 @@ export const getCACertificates = memoize((): string[] | undefined => {
     if (systemCAs && systemCAs.length > 0) {
       certs.push(...systemCAs)
       logForDebugging(
-        `CA certs: Loaded ${certs.length} system CA certificates (--use-system-ca)`,
+        `CA certs: Loaded ${systemCAs.length} system CA certificates`,
       )
-    } else if (!getCACerts && !extraCertsPath) {
+    } else if (!getCACerts && !extraCertsPath && !useBundledCA) {
       // Under Node.js where getCACertificates doesn't exist and no extra certs,
       // return undefined to let Node.js handle --use-system-ca natively.
       logForDebugging(
-        'CA certs: --use-system-ca set but system CA API unavailable, deferring to runtime',
+        'CA certs: system store selected but system CA API unavailable, deferring to runtime',
       )
       return undefined
-    } else {
+    } else if (!useBundledCA) {
       // System CA API returned empty or unavailable; fall back to bundled root certs
       certs.push(...tls.rootCertificates)
       logForDebugging(
-        `CA certs: Loaded ${certs.length} bundled root certificates as base (--use-system-ca fallback)`,
+        `CA certs: Loaded ${certs.length} bundled root certificates as base (system store fallback)`,
       )
     }
-  } else {
+  } else if (!useBundledCA) {
     // Must include bundled Mozilla CAs as base since ca replaces defaults
     certs.push(...tls.rootCertificates)
     logForDebugging(

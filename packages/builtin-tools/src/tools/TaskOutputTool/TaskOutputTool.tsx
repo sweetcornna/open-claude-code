@@ -195,8 +195,11 @@ export const TaskOutputTool: Tool<InputSchema, TaskOutputToolOutput> = buildTool
   searchHint: 'read output/logs from a background task',
   maxResultSizeChars: 100_000,
   shouldDefer: true,
-  // Backwards-compatible aliases for renamed tools
-  aliases: ['AgentOutputTool', 'BashOutputTool'],
+  // Backwards-compatible aliases for renamed tools. The bare AgentOutput /
+  // BashOutput spellings are what upstream Claude Code exposes, so models that
+  // learned those names call them verbatim — without the alias the call is
+  // rejected as an unknown tool rather than routed here.
+  aliases: ['AgentOutputTool', 'BashOutputTool', 'AgentOutput', 'BashOutput'],
 
   userFacingName() {
     return 'Task Output';

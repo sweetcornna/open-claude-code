@@ -114,6 +114,11 @@ const daemonCmd =
 const backgroundCmd = feature('BG_SESSIONS')
   ? require('./commands/background/index.js').default
   : null
+const stopCmd = feature('BG_SESSIONS')
+  ? (
+      require('./commands/stop/index.js') as typeof import('./commands/stop/index.js')
+    ).default
+  : null
 const jobCmd = feature('TEMPLATES')
   ? require('./commands/job/index.js').default
   : null
@@ -142,6 +147,7 @@ import artifacts from './commands/artifacts/index.js'
 import agents from './commands/agents/index.js'
 import plugin from './commands/plugin/index.js'
 import reloadPlugins from './commands/reload-plugins/index.js'
+import reloadSkills from './commands/reload-skills/index.js'
 import rewind from './commands/rewind/index.js'
 import heapDump from './commands/heapdump/index.js'
 import version from './commands/version.js'
@@ -285,6 +291,7 @@ const COMMANDS = memoize((): Command[] => [
   pr_comments,
   releaseNotes,
   reloadPlugins,
+  reloadSkills,
   rename,
   resume,
   session,
@@ -335,6 +342,7 @@ const COMMANDS = memoize((): Command[] => [
   ...(torch ? [torch] : []),
   ...(daemonCmd ? [daemonCmd] : []),
   ...(backgroundCmd ? [backgroundCmd] : []),
+  ...(stopCmd ? [stopCmd] : []),
   ...(jobCmd ? [jobCmd] : []),
   summary,
   recap,

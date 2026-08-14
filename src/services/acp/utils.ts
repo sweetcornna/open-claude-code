@@ -3,6 +3,7 @@
  * Ported from claude-agent-acp-main/src/utils.ts and acp-agent.ts helpers.
  */
 import { Writable } from 'node:stream'
+import { PERMISSION_MODE_INPUT_ALIASES } from '../../types/permissions.js'
 import type { PermissionMode } from '../../entrypoints/sdk/coreTypes.generated.js'
 
 // ── Pushable ──────────────────────────────────────────────────────
@@ -97,6 +98,14 @@ const IS_ROOT =
       : false
 const ALLOW_BYPASS = !IS_ROOT || !!process.env.IS_SANDBOX
 
+// This table is case-folded on purpose: ACP peers are editor plugins, not
+// humans reading a --help line, and they spell the modes every which way.
+//
+// The input-surface aliases are DERIVED from the shared table rather than
+// spelled out again. This file used to be the third hand-written copy of the
+// alias set and the only one that had drifted: it predated `manual`, so an
+// editor sending upstream's spelling got `Invalid permissions.defaultMode:
+// manual` while the same string was accepted on the CLI and in settings.json.
 const PERMISSION_MODE_ALIASES: Record<string, PermissionMode> = {
   auto: 'auto',
   default: 'default',
@@ -105,6 +114,12 @@ const PERMISSION_MODE_ALIASES: Record<string, PermissionMode> = {
   plan: 'plan',
   bypasspermissions: 'bypassPermissions',
   bypass: 'bypassPermissions',
+  ...Object.fromEntries(
+    Object.entries(PERMISSION_MODE_INPUT_ALIASES).map(([alias, mode]) => [
+      alias.toLowerCase(),
+      mode,
+    ]),
+  ),
 }
 
 export function resolvePermissionMode(

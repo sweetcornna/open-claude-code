@@ -38,6 +38,69 @@ export const INTERNAL_PERMISSION_MODES = [
 
 export const PERMISSION_MODES = INTERNAL_PERMISSION_MODES
 
+// ---------------------------------------------------------------------------
+// Input aliases
+//
+// Upstream Claude Code renamed the "default" mode to "manual" on its *input*
+// surface only: `--permission-mode manual` and `"defaultMode": "manual"` are
+// accepted and normalized back to 'default' before anything else sees them.
+// occ must accept the same spelling, because a settings.json copied over from
+// an official install otherwise fails schema validation — and occ's failure
+// mode for an invalid settings file is to skip the WHOLE file (see
+// InvalidSettingsDialog), so one unknown enum member silently drops every
+// other setting the user had.
+//
+// 'manual' is deliberately NOT a fifth real mode: every `mode === 'default'`
+// comparison in the codebase would have to grow a second arm. Normalize at the
+// two entry points (CLI flag, settings schema) and let the rest stay unaware.
+// ---------------------------------------------------------------------------
+
+export const PERMISSION_MODE_MANUAL_ALIAS = 'manual'
+
+/**
+ * Values accepted on input surfaces but not part of {@link PERMISSION_MODES}.
+ */
+export const PERMISSION_MODE_INPUT_ALIASES = {
+  [PERMISSION_MODE_MANUAL_ALIAS]: 'default',
+} as const satisfies Record<string, PermissionMode>
+
+export type PermissionModeAlias = keyof typeof PERMISSION_MODE_INPUT_ALIASES
+
+/** Every string an input surface accepts: real modes plus aliases. */
+export const PERMISSION_MODE_INPUTS = [
+  ...INTERNAL_PERMISSION_MODES,
+  ...(Object.keys(PERMISSION_MODE_INPUT_ALIASES) as PermissionModeAlias[]),
+] as const
+
+/**
+ * What `--permission-mode` advertises in `--help`. Mirrors upstream: 'manual'
+ * is shown in place of 'default'. Both are still accepted — the CLI registers
+ * this list via Commander's `.choices()` (display) and validates with
+ * {@link parsePermissionMode} via `.argParser()` (registered after, so it
+ * wins). Upstream splits the two the same way.
+ */
+export const PERMISSION_MODE_CLI_CHOICES: readonly string[] =
+  PERMISSION_MODE_INPUTS.filter(mode => mode !== 'default')
+
+/**
+ * Map an input-surface spelling onto a real {@link PermissionMode}. Unknown
+ * values pass through unchanged so the caller can report them.
+ */
+export function normalizePermissionModeAlias(value: string): string {
+  return (
+    (PERMISSION_MODE_INPUT_ALIASES as Record<string, string>)[value] ?? value
+  )
+}
+
+/**
+ * Parse an input-surface permission mode, returning `undefined` when the value
+ * is neither a real mode nor a known alias.
+ */
+export function parsePermissionMode(value: string): PermissionMode | undefined {
+  const normalized = normalizePermissionModeAlias(value)
+  return INTERNAL_PERMISSION_MODES.find(mode => mode === normalized)
+}
+
 // ============================================================================
 // Permission Behaviors
 // ============================================================================

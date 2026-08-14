@@ -57,12 +57,33 @@ export function getAddressFamily(options: LookupOptions): 0 | 4 | 6 {
 type EnvLike = Record<string, string | undefined>
 
 /**
- * Get the active proxy URL if one is configured
- * Prefers lowercase variants over uppercase (https_proxy > HTTPS_PROXY > http_proxy > HTTP_PROXY)
+ * Get the active proxy URL if one is configured.
+ *
+ * Order: lowercase before uppercase (https_proxy > HTTPS_PROXY > http_proxy >
+ * HTTP_PROXY), then the `CLAUDE_CODE_`-prefixed variants as a last resort.
+ *
+ * The prefixed names exist so a user can point occ at a proxy without setting
+ * the standard variables process-wide (which every child process inherits).
+ * They are deliberately lowest priority: an environment that already declares
+ * a proxy the normal way must keep winning.
+ *
+ * Divergence from upstream: upstream declares CLAUDE_CODE_HTTP(S)_PROXY but
+ * never consults them for its own traffic — the only read site builds a
+ * subprocess env fan-out (npm/yarn/JAVA_TOOL_OPTIONS/…) that is itself gated
+ * on CLAUDE_CODE_REMOTE. occ has no such fan-out, so honoring them here is
+ * the reading that makes the variable names true.
+ *
  * @param env Environment variables to check (defaults to process.env for production use)
  */
 export function getProxyUrl(env: EnvLike = process.env): string | undefined {
-  return env.https_proxy || env.HTTPS_PROXY || env.http_proxy || env.HTTP_PROXY
+  return (
+    env.https_proxy ||
+    env.HTTPS_PROXY ||
+    env.http_proxy ||
+    env.HTTP_PROXY ||
+    env.CLAUDE_CODE_HTTPS_PROXY ||
+    env.CLAUDE_CODE_HTTP_PROXY
+  )
 }
 
 /**

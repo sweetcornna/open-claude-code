@@ -228,9 +228,28 @@ export interface BashPromptParams {
   backgroundTasksEnabled: boolean
   /** feature('MONITOR_TOOL') — swaps in the Monitor-aware sleep guidance. */
   monitorTool: boolean
+  /**
+   * Windows: this tool runs Git Bash, not cmd.exe/PowerShell. Without saying
+   * so the model writes `NUL`, `%VAR%` and backslash paths, which Git Bash
+   * accepts as literals and silently does the wrong thing.
+   */
+  windowsGitBash: boolean
+  /**
+   * Windows + PowerShell tool present: the model has a sibling tool that DOES
+   * take PowerShell syntax, so it needs the extra "not here" cases.
+   */
+  powershellToolAvailable: boolean
   /** Null when sandboxing is disabled. */
   sandbox: BashSandboxPromptParams | null
   git: BashGitPromptParams
+}
+
+function renderWindowsShellNote(p: BashPromptParams): string | null {
+  if (!p.windowsGitBash) return null
+  const base =
+    'This tool runs Git Bash (POSIX sh), not cmd.exe or PowerShell. Use Unix shell syntax: `/dev/null` not `NUL`, forward slashes, `$VAR` not `%VAR%` or `$env:VAR`.'
+  if (!p.powershellToolAvailable) return base
+  return `${base} Do not use PowerShell here-strings (\`@'…'@\`) or backtick continuation here — for multi-line strings use a heredoc.`
 }
 
 export function renderBashPrompt(p: BashPromptParams): string {
@@ -277,7 +296,12 @@ export function renderBashPrompt(p: BashPromptParams): string {
     'Do not retry failing commands in a sleep loop — diagnose the root cause.',
     ...(p.monitorTool
       ? [
+          // detectBlockedSleepPattern only inspects the FIRST subcommand, so
+          // `until <check>; do sleep 2; done` is genuinely allowed — and so is
+          // `sleep 1 && sleep 1 && …`, which is why the anti-chaining clause
+          // has to be stated rather than enforced.
           '`sleep N` as the first command with N ≥ 2 is blocked. If you need a delay (rate limiting, deliberate pacing), keep it under 2 seconds.',
+          'To wait for a condition, use Monitor with an until-loop (e.g. `until <check>; do sleep 2; done`) — you are notified when the loop exits. Do not chain shorter sleeps to work around the block.',
         ]
       : [
           'If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.',
@@ -287,7 +311,7 @@ export function renderBashPrompt(p: BashPromptParams): string {
   const instructionItems: Array<string | string[]> = [
     'If your command will create new directories or files, first use this tool to run `ls` to verify the parent directory exists and is the correct location.',
     'Always quote file paths that contain spaces with double quotes in your command (e.g., cd "path with spaces/file.txt")',
-    'Try to maintain your current working directory throughout the session by using absolute paths and avoiding usage of `cd`. You may use `cd` if the User explicitly requests it.',
+    'Try to maintain your current working directory throughout the session by using absolute paths and avoiding usage of `cd`. You may use `cd` if the User explicitly requests it. In particular, never prepend `cd <current-directory>` to a `git` command — `git` already operates on the current working tree, and the compound triggers a permission prompt.',
     `You may specify an optional timeout in milliseconds (up to ${p.maxTimeoutMs}ms / ${p.maxTimeoutMs / 60000} minutes). By default, your command will timeout after ${p.defaultTimeoutMs}ms (${p.defaultTimeoutMs / 60000} minutes).`,
     ...(p.backgroundTasksEnabled ? [BACKGROUND_USAGE_NOTE] : []),
     'When issuing multiple commands:',
@@ -308,11 +332,18 @@ export function renderBashPrompt(p: BashPromptParams): string {
   ]
 
   const gitInstructions = renderCommitAndPRInstructions(p.git)
+  const windowsShellNote = renderWindowsShellNote(p)
 
   return [
     'Executes a given bash command and returns its output.',
+    ...(windowsShellNote ? ['', windowsShellNote] : []),
     '',
     "The working directory persists between commands, but shell state does not. The shell environment is initialized from the user's profile (bash or zsh).",
+    '',
+    // Environment facts the model cannot observe: it never sees the user's
+    // terminal, so it assumes echoing a result to stdout has "told the user".
+    'Command output is displayed to you, not reliably to the user.',
+    'Commands are cheap to run and their errors are informative: run the straightforward command rather than perfecting it mentally first, and adjust from what it prints.',
     '',
     `IMPORTANT: Avoid using this tool to run ${avoidCommands} commands, unless explicitly instructed or after you have verified that a dedicated tool cannot accomplish your task. Instead, use the appropriate dedicated tool as this will provide a much better experience for the user:`,
     '',

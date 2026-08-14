@@ -1,6 +1,8 @@
 import { feature } from 'bun:bundle';
 import * as React from 'react';
 import { buildTool, type ToolDef, toolMatchesName } from '@open-claude-code/tool-runtime/Tool.js';
+import { shouldForwardSubagentText } from '@open-claude-code/tool-runtime/cliSessionOptions.js';
+import { isBackgroundRequested, shouldAgentRunAsync } from './scheduling.js';
 import type { AssistantMessage, Message as MessageType, NormalizedUserMessage } from 'src/types/message.js';
 import { getQuerySourceForAgent } from 'src/utils/text/promptCategory.js';
 import { z } from 'zod/v4';
@@ -161,10 +163,18 @@ const baseInputSchema = lazySchema(() =>
       .describe(
         "Optional model override for this agent. Takes precedence over the agent definition's model frontmatter. If omitted, uses the agent definition's model, or inherits from the parent.",
       ),
+    // Default flipped to background on 2026-08-13 (user-approved) to match
+    // upstream. Before that, occ required `run_in_background === true` and
+    // this description said so; the pair was left mismatched for one round
+    // while the scheduler change was pending review. `backgroundRequested` in
+    // call() is the runtime half — the two must always say the same thing, or
+    // the model is told its agents are detached while they hold the turn open.
     run_in_background: z
       .boolean()
       .optional()
-      .describe('Set to true to run this agent in the background. You will be notified when it completes.'),
+      .describe(
+        "Agents run in the background by default; you will be notified when one completes. Set to false only when your very next action depends on this agent's result and nothing else could usefully happen while it runs — otherwise leave it in the background so the user can hand you other work.",
+      ),
   }),
 );
 
@@ -174,12 +184,28 @@ const fullInputSchema = lazySchema(() => {
   const multiAgentInputSchema = z.object({
     name: z
       .string()
+      // The name becomes the SendMessage routing key (via formatAgentId) and
+      // reaches the team directory on disk; sanitizeAgentName() only strips
+      // `@`. Constrain it in the schema rather than in prose so the model is
+      // told the shape up front instead of discovering it from a spawn failure.
+      .regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/, {
+        message:
+          'name must start with a letter or digit and contain only letters, digits, underscores, or hyphens (max 64 chars)',
+      })
       .optional()
       .describe('Name for the spawned agent. Makes it addressable via SendMessage({to: name}) while running.'),
     team_name: z.string().optional().describe('Team name for spawning. Uses current team context if omitted.'),
+    // Scope note, not deprecation: unlike upstream (which ignores `mode`
+    // outright), occ still reads it — but only on the teammate spawn path
+    // (`team_name` + `name`), and only the value "plan", which becomes
+    // `plan_mode_required`. Ordinary subagents ignore it entirely; they run
+    // with `selectedAgent.permissionMode ?? 'acceptEdits'`. Saying so here
+    // stops the model from reaching for `mode` as a general sandbox knob.
     mode: permissionModeSchema()
       .optional()
-      .describe('Permission mode for spawned teammate (e.g., "plan" to require plan approval).'),
+      .describe(
+        'Teammate spawns only (requires team_name and name): pass "plan" to require plan approval from the teammate. Ignored for ordinary subagents, which inherit the permission mode from their agent definition.',
+      ),
   });
 
   return baseInputSchema()
@@ -594,6 +620,16 @@ export const AgentTool = buildTool({
       permissionMode,
     );
 
+    // Foreground vs background — see scheduling.ts for the rules and why the
+    // default is what it is. Computed once here so the two telemetry payloads
+    // below and `shouldRunAsync` can never disagree.
+    const schedulingInput = {
+      runInBackground: run_in_background,
+      agentDefinitionBackground: selectedAgent.background,
+      isInProcessTeammate: isInProcessTeammate(),
+    };
+    const backgroundRequested = isBackgroundRequested(schedulingInput);
+
     logEvent('tengu_agent_tool_selected', {
       agent_type: selectedAgent.agentType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       model: resolvedAgentModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -601,7 +637,7 @@ export const AgentTool = buildTool({
       color: selectedAgent.color as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       is_built_in_agent: isBuiltInAgent(selectedAgent),
       is_resume: false,
-      is_async: (run_in_background === true || selectedAgent.background === true) && !isBackgroundTasksDisabled,
+      is_async: backgroundRequested && !isBackgroundTasksDisabled,
       is_fork: isForkPath,
     });
 
@@ -732,7 +768,7 @@ export const AgentTool = buildTool({
       isBuiltInAgent: isBuiltInAgent(selectedAgent),
       startTime,
       agentType: selectedAgent.agentType,
-      isAsync: (run_in_background === true || selectedAgent.background === true) && !isBackgroundTasksDisabled,
+      isAsync: backgroundRequested && !isBackgroundTasksDisabled,
     };
 
     // Use inline env check instead of coordinatorModule to avoid circular
@@ -752,14 +788,12 @@ export const AgentTool = buildTool({
     // below (registerAsyncAgentTask + notifyOnCompletion).
     const assistantForceAsync = feature('KAIROS') ? appState.kairosEnabled : false;
 
-    const shouldRunAsync =
-      (run_in_background === true ||
-        selectedAgent.background === true ||
-        isCoordinator ||
-        forceAsync ||
-        assistantForceAsync ||
-        (proactiveModule?.isProactiveActive() ?? false)) &&
-      !isBackgroundTasksDisabled;
+    const shouldRunAsync = shouldAgentRunAsync({
+      ...schedulingInput,
+      forcedAsync:
+        isCoordinator || forceAsync || assistantForceAsync || (proactiveModule?.isProactiveActive() ?? false),
+      isBackgroundTasksDisabled,
+    });
     // Assemble the worker's tool pool independently of the parent's.
     // Workers always get their tools from assembleToolPool with their own
     // permission mode, so they aren't affected by the parent's tool
@@ -1359,6 +1393,22 @@ export const AgentTool = buildTool({
                 });
               }
 
+              // Nested subagent progress only bubbles up under
+              // --forward-subagent-text; by default a grandchild agent's work
+              // is summarized by its parent's tool_result alone.
+              if (
+                message.type === 'progress' &&
+                (message.data as { type?: string })?.type === 'agent_progress' &&
+                shouldForwardSubagentText() &&
+                onProgress
+              ) {
+                onProgress({
+                  toolUseID: message.toolUseID as string,
+                  data: message.data,
+                });
+                continue;
+              }
+
               if (message.type !== 'assistant' && message.type !== 'user') {
                 continue;
               }
@@ -1373,10 +1423,16 @@ export const AgentTool = buildTool({
                 }
               }
 
+              // normalizeMessages splits a multi-block message into one message
+              // per content block, so this inner loop runs at most once.
+              // Default: only tool_use / tool_result reach the parent — text and
+              // thinking stay inside the subagent. --forward-subagent-text
+              // relaxes that so the SDK sees the subagent's prose too.
+              const forwardAllBlocks = shouldForwardSubagentText();
               const normalizedNew = normalizeMessages([message]);
               for (const m of normalizedNew) {
                 for (const content of (m.message?.content ?? []) as readonly { readonly type: string }[]) {
-                  if (content.type !== 'tool_use' && content.type !== 'tool_result') {
+                  if (!forwardAllBlocks && content.type !== 'tool_use' && content.type !== 'tool_result') {
                     continue;
                   }
 

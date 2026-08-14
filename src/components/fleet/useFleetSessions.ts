@@ -10,28 +10,17 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { homedir } from 'os'
-import { listAllLiveSessions } from '../../utils/session/concurrentSessions.js'
-import { listSessionsImpl } from '../../utils/session/listSessionsImpl.js'
 import {
   type FleetGroup,
   type FleetRow,
   groupRowsByProject,
-  joinFleetRows,
 } from './fleetRows.js'
+// The load itself lives outside this file so `occ agents --json` can run it
+// without pulling React in. Keep both surfaces on the same function.
+import { loadFleetRows } from './loadFleetRows.js'
 
 /** The official view polls at the same cadence. */
 const FLEET_POLL_INTERVAL_MS = 2000
-
-/**
- * Transcript budget per poll.
- *
- * `listSessionsImpl` with a limit does a cheap stat-only pass over every
- * candidate and only reads head/tail for the newest `limit` of them, so the
- * per-poll cost is bounded by this number rather than by how many sessions the
- * user has ever started. Live sessions are by construction among the most
- * recently touched, so the join still finds their transcripts.
- */
-const FLEET_TRANSCRIPT_LIMIT = 60
 
 type FleetSessionsState = {
   rows: FleetRow[]
@@ -40,14 +29,6 @@ type FleetSessionsState = {
   loading: boolean
   error?: string
   refresh: () => void
-}
-
-async function loadFleetRows(): Promise<FleetRow[]> {
-  const [liveSessions, transcripts] = await Promise.all([
-    listAllLiveSessions(),
-    listSessionsImpl({ limit: FLEET_TRANSCRIPT_LIMIT }),
-  ])
-  return joinFleetRows(liveSessions, transcripts)
 }
 
 export function useFleetSessions(options?: {

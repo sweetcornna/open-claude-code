@@ -55,6 +55,12 @@ const ASSERT_TIMEOUT_MS = 30_000
  * `CLAUDE_CODE_VERSION` rewrites the version string, and the credential /
  * provider variables exist so that a run which is supposed to fail during
  * argument parsing cannot reach an API even if parsing regressed.
+ *
+ * `NODE_ENV` is deliberately NOT stripped. `bun test` exports `NODE_ENV=test`,
+ * so every child here inherits it, and that is the point: the credential
+ * lookup takes a throwing branch under `NODE_ENV=test` / `CI` when no key is
+ * present, and swallowing that difference is how a startup hang stayed
+ * invisible (see the "boots under NODE_ENV=test / CI" describe block below).
  */
 const STRIPPED_ENV_KEYS = [
   'ANTHROPIC_API_KEY',
@@ -131,6 +137,7 @@ const INVOCATIONS: Record<
   'mcp-help': { args: ['mcp', '--help'] },
   'auth-help': { args: ['auth', '--help'] },
   'plugin-help': { args: ['plugin', '--help'] },
+  'plugin-eval-help': { args: ['plugin', 'eval', '--help'] },
   'autonomy-help': { args: ['autonomy', '--help'] },
   'doctor-help': { args: ['doctor', '--help'] },
   'task-help': { args: ['task', '--help'], env: { USER_TYPE: 'ant' } },
@@ -138,6 +145,59 @@ const INVOCATIONS: Record<
   'unknown-flag': { args: ['--definitely-not-a-real-flag'] },
   'bogus-output-format': {
     args: ['-p', '--output-format', 'bogus', 'hello'],
+  },
+  // Value-acceptance probes. Pairing the value under test with a known-bad
+  // flag makes the run fail inside Commander either way, so the assertion is
+  // *which* error came out — no session is ever started, no network touched.
+  'effort-xhigh': {
+    args: ['--effort', 'xhigh', '--definitely-not-a-real-flag'],
+  },
+  'effort-bogus': {
+    args: ['--effort', 'turbo', '--definitely-not-a-real-flag'],
+  },
+  'permission-mode-manual': {
+    args: ['--permission-mode', 'manual', '--definitely-not-a-real-flag'],
+  },
+  // --forward-subagent-text without --output-format=stream-json. The run
+  // stops at the rootAction guard that owns the flag, which is the proof the
+  // parsed value travelled from Commander into the action handler — something
+  // a --help grep cannot show.
+  //
+  // Only this one of the three print-mode-only flags can be probed here.
+  // The other two guard on `!isNonInteractiveSession`, and this harness pipes
+  // stdout, which already makes the session non-interactive — so their guards
+  // correctly stay silent and the run proceeds into an interactive boot that
+  // the watchdog has to SIGKILL. They get acceptance probes instead.
+  'forward-subagent-text-without-stream-json': {
+    args: ['-p', '--forward-subagent-text', 'hi'],
+  },
+  // Acceptance probes: the flag plus its value, paired with a known-bad flag
+  // so Commander aborts either way. Failing on the bogus flag rather than on
+  // the value is what proves the option and its argument parsed.
+  'forward-subagent-text-accepted': {
+    args: [
+      '-p',
+      '--output-format',
+      'stream-json',
+      '--forward-subagent-text',
+      '--definitely-not-a-real-flag',
+    ],
+  },
+  'plan-mode-instructions-accepted': {
+    args: [
+      '-p',
+      '--plan-mode-instructions',
+      'Step 1: read the ticket.',
+      '--definitely-not-a-real-flag',
+    ],
+  },
+  'append-subagent-system-prompt-accepted': {
+    args: [
+      '-p',
+      '--append-subagent-system-prompt',
+      'be terse',
+      '--definitely-not-a-real-flag',
+    ],
   },
 }
 
@@ -223,6 +283,7 @@ const ROOT_OPTIONS = [
   '--allowed-tools',
   '--append-system-prompt',
   '--autocompact',
+  '--ax-screen-reader',
   '--bare',
   '--betas',
   '-c',
@@ -238,6 +299,7 @@ const ROOT_OPTIONS = [
   '--fallback-model',
   '--file',
   '--fork-session',
+  '--forward-subagent-text',
   '--from-pr',
   '-h',
   '--help',
@@ -256,6 +318,7 @@ const ROOT_OPTIONS = [
   '--output-format',
   '--permission-mode',
   '--plugin-dir',
+  '--plugin-url',
   '-p',
   '--print',
   '--replay-user-messages',
@@ -370,6 +433,8 @@ describe('occ <subcommand> --help', () => {
         'get',
         'help',
         'list',
+        'login',
+        'logout',
         'remove',
         'reset-project-choices',
         'serve',
@@ -384,8 +449,10 @@ describe('occ <subcommand> --help', () => {
       name: 'plugin-help',
       usage: 'Usage: occ plugin|plugins [options] [command]',
       commands: [
+        'details',
         'disable',
         'enable',
+        'eval',
         'help',
         'install|i',
         'list',
@@ -423,6 +490,47 @@ describe('occ <subcommand> --help', () => {
   }
 
   test(
+    'plugin eval pins its ablation, ceiling and dry-run surface',
+    () => {
+      // `plugin eval` spends real money per invocation, so the flags that
+      // bound it are part of its contract, not decoration: --dry-run must stay
+      // reachable, and --max-cost-usd / --max-duration / --timeout must all
+      // remain present. --ablation is pinned because the with/without
+      // comparison is the whole point of the command.
+      const result = golden('plugin-eval-help')
+      expect(result.exitCode).toBe(0)
+      expect(result.stderr.trim()).toBe('')
+      expect(result.stdout.split('\n')[0]).toBe(
+        'Usage: occ plugin eval [options] [command] [target]',
+      )
+      expect(commandNames(result.stdout)).toEqual(['init'])
+      expect(optionFlags(result.stdout)).toEqual([
+        '--ablation',
+        '--allow-assert-commands',
+        '--allow-tools',
+        '--case',
+        '--dry-run',
+        '--fail-on-regression',
+        '-h',
+        '--help',
+        '--json',
+        '--judge-model',
+        '--keep-temp',
+        '--max-cost-usd',
+        '--max-duration',
+        '--model',
+        '--publish',
+        '--report',
+        '--runs',
+        '--tag',
+        '--threshold',
+        '--timeout',
+      ])
+    },
+    ASSERT_TIMEOUT_MS,
+  )
+
+  test(
     'agents exposes the --list escape hatch alongside the interactive list',
     () => {
       // `occ agents` with no flags on a TTY mounts FleetView; `--list` keeps
@@ -436,8 +544,11 @@ describe('occ <subcommand> --help', () => {
       expect(result.stdout.split('\n')[0]).toBe('Usage: occ agents [options]')
       expect(commandNames(result.stdout)).toEqual([])
       expect(optionFlags(result.stdout)).toEqual([
+        '--all',
+        '--cwd',
         '-h',
         '--help',
+        '--json',
         '--list',
         '--setting-sources',
       ])
@@ -516,6 +627,46 @@ describe('occ argument validation', () => {
     },
     ASSERT_TIMEOUT_MS,
   )
+
+  test(
+    'accepts --effort xhigh',
+    () => {
+      // xhigh is the factory effort default for most provider families, and a
+      // hand-copied allowlist in rootOptions.tsx used to reject it while every
+      // other surface (settings, /model, the provider wizard) accepted it.
+      // The run still fails — on the deliberately bogus companion flag, which
+      // is what proves --effort itself parsed.
+      const result = golden('effort-xhigh')
+      expect(result.exitCode).not.toBe(0)
+      expect(result.stderr).toContain('unknown option')
+      expect(result.stderr).not.toContain('It must be one of')
+    },
+    ASSERT_TIMEOUT_MS,
+  )
+
+  test(
+    'still rejects an effort level that is not in EFFORT_LEVELS',
+    () => {
+      const result = golden('effort-bogus')
+      expect(result.exitCode).not.toBe(0)
+      expect(result.stderr).toContain('It must be one of')
+      expect(result.stderr).toContain('xhigh')
+    },
+    ASSERT_TIMEOUT_MS,
+  )
+
+  test(
+    'accepts --permission-mode manual (upstream alias for default)',
+    () => {
+      // A settings.json / command line copied from an official install must
+      // not bounce off occ.
+      const result = golden('permission-mode-manual')
+      expect(result.exitCode).not.toBe(0)
+      expect(result.stderr).toContain('unknown option')
+      expect(result.stderr).not.toContain('Allowed choices are')
+    },
+    ASSERT_TIMEOUT_MS,
+  )
 })
 
 /**
@@ -524,6 +675,119 @@ describe('occ argument validation', () => {
  * through to commander: a user asking what the command does should not have
  * files copied into their config dir as a side effect of asking.
  */
+/**
+ * `requiredMinimumVersion` / `requiredMaximumVersion` from managed (policy)
+ * settings. Exercised through a real subprocess because the gate lives in the
+ * Commander `preAction` hook — the thing being asserted is *when* it runs, and
+ * an in-process test of the pure comparison (see
+ * `src/utils/settings/__tests__/versionGate.test.ts`) cannot show that.
+ */
+describe('managed version gate', () => {
+  async function runWithPolicy(
+    policy: Record<string, unknown>,
+    args: string[],
+  ): Promise<CliResult> {
+    const policyDir = mkdtempSync(join(tmpdir(), 'occ-policy-'))
+    const ownConfigDir = mkdtempSync(join(tmpdir(), 'occ-policy-cfg-'))
+    writeFileSync(
+      join(policyDir, 'managed-settings.json'),
+      JSON.stringify(policy),
+    )
+    try {
+      return await runCli(args, {
+        OCC_MANAGED_SETTINGS_PATH: policyDir,
+        OCC_CONFIG_DIR: ownConfigDir,
+        CLAUDE_CONFIG_DIR: ownConfigDir,
+      })
+    } finally {
+      rmSync(policyDir, { force: true, recursive: true })
+      rmSync(ownConfigDir, { force: true, recursive: true })
+    }
+  }
+
+  test('refuses to run a command when the build is below the minimum', async () => {
+    const result = await runWithPolicy({ requiredMinimumVersion: '99.0.0' }, [
+      'mcp',
+      'list',
+    ])
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr).toContain('require at least 99.0.0')
+    expect(result.stdout).not.toContain('MCP servers')
+  }, 120_000)
+
+  test('refuses to run a command when the build is above the maximum', async () => {
+    const result = await runWithPolicy({ requiredMaximumVersion: '0.1.0' }, [
+      'mcp',
+      'list',
+    ])
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr).toContain('allow at most 0.1.0')
+  }, 120_000)
+
+  test('--help is never gated', async () => {
+    // An admin pinning a version range must not stop the user from reading the
+    // help text; Commander does not run preAction for --help, and this pins it.
+    const result = await runWithPolicy({ requiredMinimumVersion: '99.0.0' }, [
+      'mcp',
+      '--help',
+    ])
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain('Usage: occ mcp')
+  }, 120_000)
+
+  test('an unparseable policy value fails open', async () => {
+    // A typo in a policy file must not lock a whole fleet out of its tooling.
+    const result = await runWithPolicy({ requiredMinimumVersion: 'latest' }, [
+      'mcp',
+      'list',
+    ])
+    expect(result.stderr).not.toContain('managed settings')
+    expect(result.exitCode).toBe(0)
+  }, 120_000)
+})
+
+/**
+ * Startup must survive the environments that have no Anthropic credential.
+ *
+ * `getAnthropicApiKeyWithSource()` throws under `NODE_ENV=test` / `CI` when
+ * neither `ANTHROPIC_API_KEY` nor an OAuth token is set. `isAnthropicAuthEnabled()`
+ * calls it, `getOauthAccountInfo()` calls that, and `init()` awaits it through
+ * `initUser()` — so the throw escaped the Commander `preAction` hook and left
+ * the process alive, idle, and silent until something SIGKILLed it. `occ mcp
+ * list` printed nothing and never exited on any CI runner without a key.
+ *
+ * Every `--help` / `--version` / parse-error invocation above stops before
+ * `preAction` and cannot see this, which is exactly why it went unnoticed;
+ * these two runs reach it.
+ */
+describe('boots under NODE_ENV=test / CI without a credential', () => {
+  // Generous but far below a hang: the failure mode is "never exits", and
+  // runCli's watchdog SIGKILLs at SPAWN_TIMEOUT_MS, surfacing exitCode null.
+  const BOOT_TIMEOUT_MS = 120_000
+
+  test(
+    'NODE_ENV=test reaches a preAction command and exits cleanly',
+    async () => {
+      const result = await runCli(['mcp', 'list'], { NODE_ENV: 'test' })
+      expect(result.exitCode).toBe(0)
+      expect(result.stdout).toContain('No MCP servers configured')
+    },
+    BOOT_TIMEOUT_MS,
+  )
+
+  test(
+    'CI=1 reaches a preAction command and exits cleanly',
+    async () => {
+      // The production-facing half of the same branch: no NODE_ENV involved,
+      // just a CI runner with no key.
+      const result = await runCli(['mcp', 'list'], { CI: '1', NODE_ENV: '' })
+      expect(result.exitCode).toBe(0)
+      expect(result.stdout).toContain('No MCP servers configured')
+    },
+    BOOT_TIMEOUT_MS,
+  )
+})
+
 describe('migrate --help does not perform a migration', () => {
   test('prints help and leaves the config dir untouched', async () => {
     const configDir = mkdtempSync(join(tmpdir(), 'occ-migrate-help-'))
@@ -548,4 +812,50 @@ describe('migrate --help does not perform a migration', () => {
       rmSync(legacyDir, { force: true, recursive: true })
     }
   })
+})
+
+describe('subagent / plan-mode CLI options', () => {
+  test(
+    '--forward-subagent-text without stream-json hits its rootAction guard',
+    () => {
+      const result = golden('forward-subagent-text-without-stream-json')
+      expect(result.exitCode).not.toBe(0)
+      expect(result.stderr).toContain(
+        'Error: --forward-subagent-text requires --print and --output-format=stream-json.',
+      )
+      // The guard fires before anything reaches auth or the network.
+      expect(result.stderr).not.toContain('API key')
+    },
+    ASSERT_TIMEOUT_MS,
+  )
+
+  const accepted = [
+    {
+      name: 'forward-subagent-text-accepted' as const,
+      notRejectedWith: '--forward-subagent-text requires',
+    },
+    {
+      name: 'plan-mode-instructions-accepted' as const,
+      notRejectedWith: '--plan-mode-instructions',
+    },
+    {
+      name: 'append-subagent-system-prompt-accepted' as const,
+      notRejectedWith: '--append-subagent-system-prompt',
+    },
+  ]
+
+  for (const testCase of accepted) {
+    test(
+      `${testCase.name} parses the option and its argument`,
+      () => {
+        const result = golden(testCase.name)
+        expect(result.exitCode).not.toBe(0)
+        // Failing on the companion bogus flag, not on the option under test.
+        expect(result.stderr).toContain('unknown option')
+        expect(result.stderr).toContain('--definitely-not-a-real-flag')
+        expect(result.stderr).not.toContain(testCase.notRejectedWith)
+      },
+      ASSERT_TIMEOUT_MS,
+    )
+  }
 })

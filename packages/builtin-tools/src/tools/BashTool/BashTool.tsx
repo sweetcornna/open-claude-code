@@ -51,7 +51,9 @@ import { expandPath } from 'src/utils/filesystem/path.js';
 import { getClaudeTempDir } from 'src/utils/permissions/filesystem.js';
 import type { PermissionResult } from '@open-claude-code/tool-runtime/permissions/PermissionResult.js';
 import { maybeRecordPluginHint } from 'src/utils/plugins/hintRecommendation.js';
+import { getPlatform } from 'src/utils/process/platform.js';
 import { exec } from 'src/utils/shell/Shell.js';
+import { isPowerShellToolEnabled } from 'src/utils/shell/shellToolUtils.js';
 import type { ExecResult } from 'src/utils/shell/ShellCommand.js';
 import { SandboxManager } from 'src/utils/sandbox/sandbox-adapter.js';
 import { semanticBoolean } from '@open-claude-code/tool-runtime/semanticBoolean.js';
@@ -672,6 +674,8 @@ export const BashTool = buildTool({
       defaultTimeoutMs: getDefaultTimeoutMs(),
       backgroundTasksEnabled: !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS),
       monitorTool: feature('MONITOR_TOOL') ? true : false,
+      windowsGitBash: getPlatform() === 'windows',
+      powershellToolAvailable: isPowerShellToolEnabled(),
       sandbox: buildSandboxPromptParams(),
       git: buildGitPromptParams(),
     });

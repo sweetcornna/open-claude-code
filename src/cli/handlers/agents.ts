@@ -32,11 +32,37 @@ import { getCwd } from '../../utils/filesystem/cwd.js'
  * detection.
  */
 export function shouldMountFleetView(
-  options: { list?: boolean },
+  options: { json?: boolean; list?: boolean },
   streams: { stdoutIsTTY?: boolean; stdinIsTTY?: boolean },
 ): boolean {
-  if (options.list) return false
+  // `--json` is the machine-readable surface and must never mount a TUI, even
+  // on a TTY — that is the whole point of having it.
+  if (options.json || options.list) return false
   return Boolean(streams.stdoutIsTTY) && Boolean(streams.stdinIsTTY)
+}
+
+/**
+ * `occ agents --json` — print the running/recent session list as a JSON array.
+ *
+ * Never requires a TTY (matching upstream), so it is usable from scripts, CI
+ * and sibling agents. Writes exactly one line: `JSON.stringify(entries)`.
+ */
+export async function agentsJsonHandler(options: {
+  all?: boolean
+  cwd?: string
+}): Promise<void> {
+  const [{ fleetRowsToJson }, { loadFleetRows }, { resolve }] =
+    await Promise.all([
+      import('../../components/fleet/fleetJson.js'),
+      import('../../components/fleet/loadFleetRows.js'),
+      import('path'),
+    ])
+  const rows = await loadFleetRows()
+  const entries = fleetRowsToJson(rows, {
+    all: options.all,
+    ...(options.cwd !== undefined && { cwd: resolve(options.cwd) }),
+  })
+  console.log(JSON.stringify(entries))
 }
 
 function formatAgent(agent: ResolvedAgent): string {

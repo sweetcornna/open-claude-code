@@ -533,6 +533,42 @@ export function getRuntimeMainLoopModel(params: {
  * @returns The default model setting to use
  */
 export function getDefaultMainLoopModelSetting(): ModelName | ModelAlias {
+  return applyAvailableModelsEnforcement(resolveDefaultMainLoopModelSetting())
+}
+
+/**
+ * `settings.enforceAvailableModels` — extend the availableModels allowlist to
+ * the "Default" selection itself.
+ *
+ * Without it, an admin allowlist only constrains what a user can *pick*: the
+ * tier default is resolved from the subscription and handed out unchecked, so
+ * an org that allows only Sonnet still starts every Max user on Opus.
+ *
+ * Deliberately a no-op when the allowlist is unset or empty. An empty
+ * `availableModels` already means "only the default model", so enforcing
+ * against it would leave nothing to resolve to.
+ */
+function applyAvailableModelsEnforcement(
+  setting: ModelName | ModelAlias,
+): ModelName | ModelAlias {
+  const settings = getSettings_DEPRECATED() || {}
+  if (settings.enforceAvailableModels !== true) return setting
+
+  const allowlist = settings.availableModels
+  if (!allowlist || allowlist.length === 0) return setting
+  if (isModelAllowed(setting)) return setting
+
+  // First allowed entry wins, so admins control the substitute by ordering
+  // the allowlist rather than by a separate key.
+  const substitute = allowlist.find(
+    entry => entry.trim().length > 0 && isModelAllowed(entry),
+  )
+  // Nothing in the allowlist resolves to an allowed model — a contradictory
+  // configuration. Keep the tier default rather than inventing a model.
+  return substitute ?? setting
+}
+
+function resolveDefaultMainLoopModelSetting(): ModelName | ModelAlias {
   // Ants default to defaultModel from flag config, or Opus 1M if not configured
   if (process.env.USER_TYPE === 'ant') {
     return (

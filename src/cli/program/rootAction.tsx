@@ -204,7 +204,10 @@ import { relative, resolve } from 'path';
 import { resetUserCache } from 'src/utils/auth/user.js';
 import { safeParseJSON } from 'src/utils/text/json.js';
 import { seedEarlyInput } from 'src/utils/terminal/earlyInput.js';
+import { MAX_TURNS_ENV_VAR, resolveMaxTurns } from './maxTurns.js';
 import { setAllHookEventsEnabled } from 'src/utils/hooks/hookEvents.js';
+import { setCliSessionOptions } from '@open-claude-code/tool-runtime/cliSessionOptions.js';
+import { setScreenReaderModeOverride } from 'src/utils/terminal/screenReader.js';
 import { setCwd } from 'src/utils/shell/Shell.js';
 import { shouldEnablePromptSuggestion } from 'src/services/PromptSuggestion/promptSuggestion.js';
 import { shouldEnableThinkingByDefault, type ThinkingConfig } from 'src/utils/model/thinking.js';
@@ -362,7 +365,15 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
     sessionId,
     includeHookEvents,
     includePartialMessages,
+    forwardSubagentText,
   } = options;
+
+  // Accessibility: record the parsed flag so isScreenReaderMode() stops
+  // relying on its pre-parse argv fallback. Always called, so an absent flag
+  // can no longer be faked by a stray argv match later in the process.
+  // Registered in applyExtraRootOptions (after .action()), so it is not part
+  // of the inferred options type — same cast the other extra options use.
+  setScreenReaderModeOverride((options as { axScreenReader?: boolean }).axScreenReader === true);
 
   if (options.prefill) {
     seedEarlyInput(options.prefill);
@@ -1073,6 +1084,35 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
     writeToStderr(`Error: --no-session-persistence can only be used with --print mode.`);
     process.exit(1);
   }
+
+  if (forwardSubagentText && (!isNonInteractiveSession || outputFormat !== 'stream-json')) {
+    writeToStderr(`Error: --forward-subagent-text requires --print and --output-format=stream-json.`);
+    process.exit(1);
+  }
+
+  if (options.planModeInstructions && !isNonInteractiveSession) {
+    writeToStderr(`Error: --plan-mode-instructions can only be used with --print mode.`);
+    process.exit(1);
+  }
+
+  if (options.appendSubagentSystemPrompt && !isNonInteractiveSession) {
+    writeToStderr(`Error: --append-subagent-system-prompt can only be used with --print mode.`);
+    process.exit(1);
+  }
+
+  // The three options above cannot ride on ToolUseContext.options: the print
+  // path builds its context inside src/cli/print/. They are process-constant
+  // for the session (and upstream propagates them into nested subagents), so
+  // they live in a tool-runtime store both the host and builtin-tools read.
+  // --append-subagent-system-prompt implies the env gate, matching upstream.
+  if (options.appendSubagentSystemPrompt) {
+    process.env.CLAUDE_CODE_ENABLE_APPEND_SUBAGENT_PROMPT = '1';
+  }
+  setCliSessionOptions({
+    forwardSubagentText: forwardSubagentText === true,
+    appendSubagentSystemPrompt: options.appendSubagentSystemPrompt,
+    planModeInstructions: options.planModeInstructions,
+  });
 
   const effectivePrompt = prompt || '';
   let inputPrompt = await getInputPrompt(effectivePrompt, (inputFormat ?? 'text') as 'text' | 'stream-json');
@@ -2129,7 +2169,7 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
         permissionPromptToolName: options.permissionPromptTool,
         allowedTools,
         thinkingConfig,
-        maxTurns: options.maxTurns,
+        maxTurns: resolveMaxTurns(options.maxTurns, process.env[MAX_TURNS_ENV_VAR]),
         maxBudgetUsd: options.maxBudgetUsd,
         taskBudget: options.taskBudget ? { total: options.taskBudget } : undefined,
         systemPrompt,

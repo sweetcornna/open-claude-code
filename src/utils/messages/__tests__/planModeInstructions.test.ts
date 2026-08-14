@@ -1,4 +1,12 @@
-import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test'
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from 'bun:test'
 import { debugMock } from '../../../../tests/mocks/debug'
 import { setupGptTuningMock } from '../../../../tests/mocks/gptTuning'
 import { logMock } from '../../../../tests/mocks/log'
@@ -9,6 +17,9 @@ mock.module('src/utils/telemetry/debug.ts', debugMock)
 const gptTuning = setupGptTuningMock()
 
 const { getPlanModeInstructions } = await import('../planModeInstructions.js')
+const { resetCliSessionOptions, setCliSessionOptions } = await import(
+  '@open-claude-code/tool-runtime/cliSessionOptions.js'
+)
 
 /**
  * The Phase 1 and Phase 2 fragments exactly as the non-GPT path must keep
@@ -65,11 +76,17 @@ afterAll(() => {
   restore('USER_TYPE', originalEnv.userType)
 })
 
-function renderPlanModeInstructions(): string {
+function renderPlanModeInstructions(
+  overrides: {
+    reminderType?: 'full' | 'sparse'
+    customInstructions?: string
+  } = {},
+): string {
   return getPlanModeInstructions({
     reminderType: 'full',
     planFilePath: '/tmp/plan.md',
     planExists: false,
+    ...overrides,
   })
     .map(message => {
       const { content } = message.message
@@ -123,5 +140,98 @@ describe('getPlanModeInstructions — 5-phase workflow', () => {
       expect(withoutTuning).toContain(section)
       expect(withTuning).toContain(section)
     }
+  })
+})
+
+describe('getPlanModeInstructions — --plan-mode-instructions', () => {
+  const CUSTOM = 'Step 1: read the ticket.\nStep 2: write the plan.'
+
+  test('replaces the phase workflow with the supplied body', () => {
+    const instructions = renderPlanModeInstructions({
+      customInstructions: CUSTOM,
+    })
+
+    expect(instructions).toContain(CUSTOM)
+    for (const phase of [
+      '### Phase 1: Initial Understanding',
+      '### Phase 2: Design',
+      '### Phase 3: Review',
+      '### Phase 4: Final Plan',
+      '### Phase 5: Call ExitPlanMode',
+    ]) {
+      expect(instructions).not.toContain(phase)
+    }
+  })
+
+  test('keeps the read-only preamble and the ExitPlanMode protocol', () => {
+    const instructions = renderPlanModeInstructions({
+      customInstructions: CUSTOM,
+    })
+
+    expect(instructions).toContain(
+      'Plan mode is active. The user indicated that they do not want you to execute yet',
+    )
+    expect(instructions).toContain(
+      'this is the only file you are allowed to edit',
+    )
+    expect(instructions).toContain('### Call ExitPlanMode')
+    expect(instructions).toContain(
+      'your turn should only end with either using the AskUserQuestion tool OR calling ExitPlanMode',
+    )
+  })
+
+  test('the sparse reminder points back at the custom workflow', () => {
+    expect(
+      renderPlanModeInstructions({
+        reminderType: 'sparse',
+        customInstructions: CUSTOM,
+      }),
+    ).toContain('Follow the plan workflow described earlier.')
+
+    expect(renderPlanModeInstructions({ reminderType: 'sparse' })).toContain(
+      'Follow 5-phase workflow.',
+    )
+  })
+
+  test('an absent override leaves the default workflow byte-identical', () => {
+    expect(renderPlanModeInstructions({ customInstructions: undefined })).toBe(
+      renderPlanModeInstructions(),
+    )
+    expect(renderPlanModeInstructions()).toContain(
+      '### Phase 5: Call ExitPlanMode',
+    )
+  })
+})
+
+describe('getPlanModeInstructions — CLI store wiring', () => {
+  afterEach(() => resetCliSessionOptions())
+
+  test('reads --plan-mode-instructions from the CLI session store', () => {
+    setCliSessionOptions({ planModeInstructions: 'Just write the plan.' })
+    const instructions = renderPlanModeInstructions()
+
+    expect(instructions).toContain('Just write the plan.')
+    expect(instructions).not.toContain('### Phase 1: Initial Understanding')
+    expect(instructions).toContain('### Call ExitPlanMode')
+  })
+
+  test('an explicit argument beats the store', () => {
+    setCliSessionOptions({ planModeInstructions: 'from the store' })
+    expect(
+      renderPlanModeInstructions({ customInstructions: 'from the caller' }),
+    ).toContain('from the caller')
+  })
+
+  test('subagents never get the custom workflow', () => {
+    setCliSessionOptions({ planModeInstructions: 'from the store' })
+    const messages = getPlanModeInstructions({
+      reminderType: 'full',
+      isSubAgent: true,
+      planFilePath: '/tmp/plan.md',
+      planExists: false,
+    })
+    const text = JSON.stringify(messages)
+    expect(text).not.toContain('from the store')
+    expect(text).toContain('Plan mode is active')
   })
 })

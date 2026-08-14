@@ -51,6 +51,11 @@ export async function launchSnapshotUpdateDialog(
 /**
  * Site ~3250: InvalidSettingsDialog (settings validation errors).
  * Original callback wiring: onContinue={done}, onExit passed through from caller.
+ *
+ * "Fix with Claude" seeds the early-input buffer and then resolves like
+ * Continue: the session still boots with the invalid files skipped, but the
+ * prompt box already contains the request to fix them. Seeding (rather than
+ * submitting) is deliberate — the user reads the prompt before Enter.
  */
 export async function launchInvalidSettingsDialog(
   root: Root,
@@ -59,9 +64,26 @@ export async function launchInvalidSettingsDialog(
     onExit: () => void;
   },
 ): Promise<void> {
-  const { InvalidSettingsDialog } = await import('./components/InvalidSettingsDialog.js');
+  const [{ InvalidSettingsDialog }, { buildSettingsFixPrompt }, { seedEarlyInput }] = await Promise.all([
+    import('./components/InvalidSettingsDialog.js'),
+    import('./utils/settings/fixPrompt.js'),
+    import('./utils/terminal/earlyInput.js'),
+  ]);
+  const fixPrompt = buildSettingsFixPrompt(props.settingsErrors);
   return showSetupDialog(root, done => (
-    <InvalidSettingsDialog settingsErrors={props.settingsErrors} onContinue={done} onExit={props.onExit} />
+    <InvalidSettingsDialog
+      settingsErrors={props.settingsErrors}
+      onContinue={done}
+      onFix={
+        fixPrompt
+          ? () => {
+              seedEarlyInput(fixPrompt);
+              done();
+            }
+          : undefined
+      }
+      onExit={props.onExit}
+    />
   ));
 }
 

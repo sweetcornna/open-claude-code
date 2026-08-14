@@ -27,7 +27,11 @@ import { clearPluginCache } from 'src/utils/plugins/pluginLoader.js';
 import { migrateChangelogFromConfig } from 'src/utils/update/releaseNotes.js';
 import { ensureKeychainPrefetchCompleted } from 'src/utils/secureStorage/keychainPrefetch.js';
 import { ensureMdmSettingsLoaded } from 'src/utils/settings/mdm/settings.js';
+import { getSettingsForSource } from 'src/utils/settings/settings.js';
+import { evaluateVersionGate } from 'src/utils/settings/versionGate.js';
 import { profileCheckpoint } from 'src/utils/telemetry/startupProfiler.js';
+import { registerCleanup } from 'src/utils/process/cleanupRegistry.js';
+import { writeToStderr } from 'src/utils/process/process.js';
 
 export function registerPreActionHook(program: CommanderCommand): void {
   // Use preAction hook to run initialization only when executing a command,
@@ -43,6 +47,12 @@ export function registerPreActionHook(program: CommanderCommand): void {
     profileCheckpoint('preAction_after_mdm');
     await init();
     profileCheckpoint('preAction_after_init');
+
+    // Managed version gate. After init() (settings become readable) and inside
+    // preAction, which Commander does not run for `--help` — an admin pinning a
+    // version range must not stop the user from reading the help text or
+    // finding out which version they are on.
+    enforceManagedVersionGate();
 
     // process.title on Windows sets the console title directly; on POSIX,
     // terminal shell integration may mirror the process name to the tab.
@@ -68,10 +78,36 @@ export function registerPreActionHook(program: CommanderCommand): void {
     // before .option('--plugin-dir', ...) in the chain — extra-typings
     // builds the type as options are added. Narrow with a runtime guard;
     // the collect accumulator + [] default guarantee string[] in practice.
-    const pluginDir = thisCommand.getOptionValue('pluginDir');
-    if (Array.isArray(pluginDir) && pluginDir.length > 0 && pluginDir.every(p => typeof p === 'string')) {
-      setInlinePlugins(pluginDir);
-      clearPluginCache('preAction: --plugin-dir inline plugins');
+    //
+    // --plugin-url takes the same shape and joins the same list; the only
+    // difference is that its values must be remote .zip archives, which
+    // materializePluginRefs enforces along with the rest of the archive
+    // safety rules (https only, no embedded credentials, no redirects, zip
+    // slip, size/entry/timeout caps). Plain directories pass through it
+    // untouched, so both flags funnel through one call.
+    const pluginRefs = [
+      ...readStringListOption(thisCommand.getOptionValue('pluginDir')),
+      ...readStringListOption(thisCommand.getOptionValue('pluginUrl')),
+    ];
+    if (pluginRefs.length > 0) {
+      const { materializePluginRefs } = await import('src/utils/plugins/pluginArchive.js');
+      const { dirs, errors } = await materializePluginRefs(pluginRefs);
+      // One bad archive must not stop the session — same posture
+      // loadSessionOnlyPlugins already takes for a missing directory.
+      for (const { ref, error } of errors) {
+        writeToStderr(`Warning: could not load plugin from ${ref}: ${error}\n`);
+      }
+      if (dirs.length > 0) {
+        setInlinePlugins(dirs);
+        clearPluginCache('preAction: --plugin-dir/--plugin-url inline plugins');
+      }
+      // Extracted archives live under a session-scoped temp root. Registered
+      // only when something was materialized, so a session that passed plain
+      // directories adds no shutdown work.
+      registerCleanup(async () => {
+        const { cleanupPluginArchives } = await import('src/utils/plugins/pluginArchive.js');
+        await cleanupPluginArchives();
+      });
     }
 
     runMigrations();
@@ -86,6 +122,29 @@ export function registerPreActionHook(program: CommanderCommand): void {
 
     profileCheckpoint('preAction_after_remote_settings');
   });
+}
+
+/**
+ * Refuse to start when managed settings pin a version range this build is
+ * outside of.
+ *
+ * Reads `policySettings` and nothing else: `requiredMinimumVersion` /
+ * `requiredMaximumVersion` are a control an administrator applies to the user,
+ * so honouring them from user or project settings would let any repo the user
+ * opens brick their CLI. `evaluateVersionGate` fails open on unparseable
+ * values — a typo in a policy file must not lock a fleet out of its tooling.
+ */
+function enforceManagedVersionGate(): void {
+  const policy = getSettingsForSource('policySettings');
+  if (!policy) return;
+  const message = evaluateVersionGate({
+    current: MACRO.VERSION,
+    minimum: policy.requiredMinimumVersion,
+    maximum: policy.requiredMaximumVersion,
+  });
+  if (!message) return;
+  console.error(message);
+  process.exit(1);
 }
 
 // @[MODEL LAUNCH]: Consider any migrations you may need for model strings. See migrateSonnet1mToSonnet45.ts for an example.
@@ -117,4 +176,17 @@ function runMigrations(): void {
   migrateChangelogFromConfig().catch(() => {
     // Silently ignore migration errors - will retry on next startup
   });
+}
+
+/**
+ * Narrow a Commander option value to a string list.
+ *
+ * `thisCommand.opts()` is typed `{}` in the preAction hook — the hook is
+ * attached before the options are added, and extra-typings builds the type as
+ * they accumulate. The collect accumulator plus `[]` default guarantee
+ * `string[]` in practice, so this is a runtime guard rather than a parser.
+ */
+function readStringListOption(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0);
 }

@@ -26,6 +26,7 @@
 import { getOauthConfig } from '../../constants/oauth.js'
 import { isEnvTruthy } from '../config/envUtils.js'
 import { isEssentialTrafficOnly } from '../auth/privacyLevel.js'
+import { getProxyUrl } from './proxy.js'
 
 let fired = false
 
@@ -45,12 +46,13 @@ export function preconnectAnthropicApi(): void {
   ) {
     return
   }
-  // Skip if proxy/mTLS/unix — SDK's custom dispatcher won't reuse this pool
+  // Skip if proxy/mTLS/unix — SDK's custom dispatcher won't reuse this pool.
+  // Routed through getProxyUrl() rather than re-reading the env names: the
+  // list here used to drift from the real resolver, so a proxy configured via
+  // a variant this list did not know about (CLAUDE_CODE_HTTPS_PROXY) would
+  // warm a pool the SDK then never touches.
   if (
-    process.env.HTTPS_PROXY ||
-    process.env.https_proxy ||
-    process.env.HTTP_PROXY ||
-    process.env.http_proxy ||
+    getProxyUrl() ||
     process.env.ANTHROPIC_UNIX_SOCKET ||
     process.env.CLAUDE_CODE_CLIENT_CERT ||
     process.env.CLAUDE_CODE_CLIENT_KEY
