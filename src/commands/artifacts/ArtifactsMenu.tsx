@@ -1,7 +1,22 @@
 import * as React from 'react';
+import { fileURLToPath } from 'node:url';
 import { Box, Text, setClipboard, useInput } from '@anthropic/ink';
 import type { ArtifactInfo } from './scanner.js';
-import { openBrowser } from 'src/utils/network/browser.js';
+import { openBrowser, openPath } from 'src/utils/network/browser.js';
+
+/**
+ * Local-backend artifacts carry a `file://` URL, and openBrowser() refuses
+ * every protocol but http(s) — deliberately, since it is also handed URLs that
+ * came out of model output. Route those to openPath(), which is the local-file
+ * opener, instead of loosening that guard for everyone.
+ */
+function openArtifact(url: string): void {
+  if (url.startsWith('file:')) {
+    void openPath(fileURLToPath(url));
+    return;
+  }
+  void openBrowser(url);
+}
 
 type Props = {
   artifacts: ArtifactInfo[];
@@ -28,7 +43,7 @@ export function ArtifactsMenu({ artifacts, onExit }: Props): React.ReactElement 
     if (key.return) {
       const target = artifacts[selected];
       if (target.url) {
-        void openBrowser(target.url);
+        openArtifact(target.url);
       }
       return;
     }

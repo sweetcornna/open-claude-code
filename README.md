@@ -113,7 +113,7 @@ Run `/login` in the REPL and pick **Anthropic Compatible** to use any third-part
 | --- | --- | --- |
 | **Goal-driven execution** | `/goal <objective>` drives the agent across turns until done, with a token budget, completion/blocked audit and `pause`/`resume`/`continue`/`clear` | [`src/commands/goal/`](./src/commands/goal/) |
 | **Ultracode multi-agent orchestration** | `/ultracode` plus the `Workflow` tool runs deterministic JS scripts (`agent`/`pipeline`/`parallel`/`phase`); `/workflows` gives a live panel, with journal replay and a concurrency cap | [docs](./docs/zh/features/workflow-scripts.md) |
-| **Artifacts** | The model uploads HTML/dashboards/reports to a public URL (7d/30d expiry). Cloudflare Worker + R2, self-hostable | [docs](./packages/cloud-artifacts/README.md) |
+| **Artifacts** | The model renders HTML/dashboards/reports into standalone pages. Local `file://` output by default; opt in to a shared or self-hosted URL (Cloudflare Worker + R2, 7d/30d expiry) | [docs](./packages/cloud-artifacts/README.md) |
 | **ACP protocol** | Connect Zed, Cursor and other IDEs, with session resume, Skills and permission bridging | [docs](./docs/zh/features/acp-zed.md) |
 | **Remote Control** | `occ remote-control` hands the session to [Happy](https://github.com/slopus/happy) (phone / web / end-to-end encrypted) over occ's own ACP agent; the server is self-hostable | [docs](./docs/zh/features/remote-control-self-hosting.md) |
 | **Langfuse monitoring** | Inspect every agent loop in detail, export to a dataset in one click | [docs](./docs/zh/features/langfuse-monitoring.md) |

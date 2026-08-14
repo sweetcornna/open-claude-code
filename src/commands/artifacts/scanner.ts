@@ -12,7 +12,15 @@ export type ArtifactInfo = {
   isError: boolean
 }
 
-const URL_REGEX = /https?:\/\/[^\s)"',]+\.html\b/
+// `file:` is here because the local backend is the default: an artifact that
+// was never uploaded still has a URL, and without this branch the panel showed
+// a blank URL column and neither `o` (open) nor `c` (copy) did anything for
+// the backend most users are on.
+//
+// The alternation is scheme-first and the file: arm excludes `)"',` the same
+// way, so a `file:///…/a b.html` path with a space still truncates at the
+// space — matching how the tool prints it (pathToFileURL percent-encodes).
+const URL_REGEX = /(?:https?|file):\/\/[^\s)"',]+\.html\b/
 const ID_REGEX = /\bid:\s*([A-Za-z0-9_-]+)/
 const EXPIRES_REGEX = /\bexpires:\s*([0-9T:.Z+-]+)/
 

@@ -48,6 +48,44 @@ describe('extractArtifacts', () => {
     ).toEqual([])
   })
 
+  /**
+   * The local backend is the default since the shared upload host stopped
+   * accepting the token that ships in the bundle, so most artifacts now report
+   * a file:// URL. Matching only http(s) left the panel with a blank URL and
+   * made `o` (open) and `c` (copy) no-ops for exactly the common case.
+   */
+  test('picks up a local backend file:// url', () => {
+    const messages: Message[] = [
+      assistantToolUse('tu1', { file_path: '/tmp/report.md' }),
+      userToolResult(
+        'tu1',
+        'Artifact saved locally: file:///home/u/.occ/artifacts/0ErODkunbW.html (id: 0ErODkunbW)',
+      ),
+    ]
+
+    const result = extractArtifacts(messages)
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({
+      hash: '0ErODkunbW',
+      url: 'file:///home/u/.occ/artifacts/0ErODkunbW.html',
+      isError: false,
+    })
+    // No TTL on the local backend, so the tool prints no `expires:` at all.
+    expect(result[0]!.expiresAt).toBeUndefined()
+  })
+
+  test('a file:// url stops at the first delimiter, like the http one', () => {
+    const messages: Message[] = [
+      assistantToolUse('tu1', { file_path: '/tmp/a.md' }),
+      userToolResult('tu1', '(file:///tmp/artifacts/a.html) trailing prose'),
+    ]
+
+    expect(extractArtifacts(messages)[0]?.url).toBe(
+      'file:///tmp/artifacts/a.html',
+    )
+  })
+
   test('pairs a successful tool_use with its tool_result and returns parsed fields', () => {
     const messages: Message[] = [
       assistantToolUse('tu1', { file_path: '/tmp/report.html', ttl: 7 }),

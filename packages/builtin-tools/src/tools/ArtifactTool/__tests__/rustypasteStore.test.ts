@@ -4,6 +4,7 @@ import { rustypasteStore } from '../rustypasteStore.js'
 const originalFetch = globalThis.fetch
 const originalUrl = process.env.OCC_ARTIFACTS_URL
 const originalToken = process.env.OCC_ARTIFACTS_TOKEN
+const originalLegacyToken = process.env.CLAUDE_ARTIFACTS_TOKEN
 
 function mockFetch(body: string, status = 200): typeof fetch {
   return mock(() =>
@@ -11,10 +12,12 @@ function mockFetch(body: string, status = 200): typeof fetch {
   ) as unknown as typeof fetch
 }
 
-function restoreEnv(
-  name: 'OCC_ARTIFACTS_URL' | 'OCC_ARTIFACTS_TOKEN',
-  value?: string,
-) {
+type ArtifactEnvVar =
+  | 'OCC_ARTIFACTS_URL'
+  | 'OCC_ARTIFACTS_TOKEN'
+  | 'CLAUDE_ARTIFACTS_TOKEN'
+
+function restoreEnv(name: ArtifactEnvVar, value?: string) {
   if (value === undefined) delete process.env[name]
   else process.env[name] = value
 }
@@ -29,6 +32,7 @@ describe('rustypasteStore', () => {
     globalThis.fetch = originalFetch
     restoreEnv('OCC_ARTIFACTS_URL', originalUrl)
     restoreEnv('OCC_ARTIFACTS_TOKEN', originalToken)
+    restoreEnv('CLAUDE_ARTIFACTS_TOKEN', originalLegacyToken)
   })
 
   test('uploads HTML and maps the response URL to the store result', async () => {
@@ -100,10 +104,43 @@ describe('rustypasteStore', () => {
   })
 
   test('includes the HTTP status and response body in upload errors', async () => {
+    globalThis.fetch = mockFetch('boom', 500)
+
+    await expect(
+      rustypasteStore.upload({ html: '<p>x</p>', ttlDays: 7 }),
+    ).rejects.toThrow('HTTP 500: boom')
+  })
+
+  test('turns a rejected token into an actionable message', async () => {
     globalThis.fetch = mockFetch('unauthorized', 401)
 
     await expect(
       rustypasteStore.upload({ html: '<p>x</p>', ttlDays: 7 }),
-    ).rejects.toThrow('HTTP 401: unauthorized')
+    ).rejects.toThrow(/OCC_ARTIFACTS_TOKEN/)
+  })
+
+  test('refuses to send a request when no token is configured', async () => {
+    delete process.env.OCC_ARTIFACTS_TOKEN
+    delete process.env.CLAUDE_ARTIFACTS_TOKEN
+    let fetchCalled = false
+    globalThis.fetch = mock(() => {
+      fetchCalled = true
+      return Promise.resolve(new Response(''))
+    }) as unknown as typeof fetch
+
+    await expect(
+      rustypasteStore.upload({ html: '<p>x</p>', ttlDays: 7 }),
+    ).rejects.toThrow(/needs an upload token/)
+    expect(fetchCalled).toBe(false)
+  })
+
+  test('turns an unreachable host into an actionable message', async () => {
+    globalThis.fetch = mock(() =>
+      Promise.reject(new Error('connect ECONNREFUSED')),
+    ) as unknown as typeof fetch
+
+    await expect(
+      rustypasteStore.upload({ html: '<p>x</p>', ttlDays: 7 }),
+    ).rejects.toThrow(/cannot reach https:\/\/paste\.example\.test/)
   })
 })

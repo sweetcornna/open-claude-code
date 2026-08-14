@@ -36,6 +36,18 @@ describe('ArtifactTool UI.renderToolResultMessage', () => {
     expect(text).toContain('Artifact uploaded');
   });
 
+  test('says "saved", not "uploaded", for a local file:// artifact', () => {
+    const content: ArtifactOutput = {
+      id: 'abc123',
+      url: 'file:///Users/x/.occ/artifacts/abc123.html',
+      expiresAt: '',
+    };
+    const text = extractText(renderToolResultMessage(content, NO_PROGRESS, OPTIONS));
+    expect(text).toContain('Artifact saved');
+    expect(text).not.toContain('uploaded');
+    expect(text).toContain(content.url);
+  });
+
   test('renders the error message on failure', () => {
     const content: ArtifactOutput = {
       id: '',
@@ -46,7 +58,7 @@ describe('ArtifactTool UI.renderToolResultMessage', () => {
     const node = renderToolResultMessage(content, NO_PROGRESS, OPTIONS);
     expect(React.isValidElement(node)).toBe(true);
     const text = extractText(node);
-    expect(text).toContain('Artifact upload failed');
+    expect(text).toContain('Artifact failed');
     expect(text).toContain('/tmp/missing.html');
   });
 

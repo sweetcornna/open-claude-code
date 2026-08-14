@@ -1,4 +1,5 @@
 import { getArtifactsToken, getUploadUrl } from './config.js'
+import { unauthorizedMessage, unreachableMessage } from './errors.js'
 import type { ArtifactStore } from './store.js'
 
 export type UploadResult = {
@@ -22,14 +23,19 @@ export async function uploadArtifact(
   if (params.hash) url.searchParams.set('hash', params.hash)
   if (params.ttl) url.searchParams.set('ttl', String(params.ttl))
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${params.token}`,
-      'Content-Type': 'text/html',
-    },
-    body: params.html,
-  })
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${params.token}`,
+        'Content-Type': 'text/html',
+      },
+      body: params.html,
+    })
+  } catch (e) {
+    throw new Error(unreachableMessage(params.uploadUrl, e))
+  }
 
   // Deno Deploy proxy flattens upstream status to 200; the Worker embeds the
   // real error in the body as `{ "error": "<code>" }`. Always parse body first.
@@ -44,8 +50,11 @@ export async function uploadArtifact(
   }
 
   if (parsed && typeof parsed === 'object' && 'error' in parsed) {
-    const code = (parsed as { error: unknown }).error
-    throw new Error(`Artifact upload failed: ${String(code)}`)
+    const code = String((parsed as { error: unknown }).error)
+    // Every other code (payload_too_large, invalid_ttl, …) is already
+    // actionable and passes through verbatim.
+    if (code === 'unauthorized') throw new Error(unauthorizedMessage())
+    throw new Error(`Artifact upload failed: ${code}`)
   }
 
   const data = parsed as Partial<UploadResult>
@@ -65,7 +74,7 @@ export const workerStore: ArtifactStore = {
   upload({ html, hash, ttlDays }) {
     return uploadArtifact({
       html,
-      token: getArtifactsToken(),
+      token: getArtifactsToken('worker'),
       uploadUrl: getUploadUrl(),
       hash,
       ttl: ttlDays,

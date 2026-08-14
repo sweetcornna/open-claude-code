@@ -91,7 +91,7 @@ Open Claude Code は権限システム、サンドボックス、Plan Mode、Aut
 | 機能 | 説明 |
 | --- | --- |
 | Goal による継続駆動 | `/goal <objective>` で目標を設定し、ターンをまたいで進行する。token budget、完了/阻害の監査、`pause`、`resume`、`continue`、`clear` に対応 |
-| Artifacts | HTML、カンバン、レポートを公開 URL へアップロードする。7/30 日後の自動失効とセルフホストに対応 |
+| Artifacts | HTML／カンバン／レポートを単独ページとして生成する。既定ではローカル設定ディレクトリに書き出し（`file://`、端末外へ出ない）、公開 URL への発行は明示的なオプトイン |
 | Dynamic Workflow | `/ultracode` + `Workflow` ツールで決定的な JS オーケストレーションを実行する。journal の replay、token budget、並列数上限に対応 |
 | ACP | Zed など ACP 対応クライアントと接続する。セッション復元、Skills、権限ブリッジに対応 |
 | Remote Control | Docker でリモート UI をセルフホストし、別のデバイスからセッションを表示・操作できる |

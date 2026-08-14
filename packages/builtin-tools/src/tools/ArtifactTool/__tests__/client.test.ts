@@ -93,6 +93,35 @@ describe('uploadArtifact', () => {
     ).rejects.toThrow(/payload_too_large/)
   })
 
+  test('turns unauthorized into an actionable message, not a bare code', async () => {
+    globalThis.fetch = mockFetch({ error: 'unauthorized' }, 200)
+
+    const call = uploadArtifact({
+      html: '<p/>',
+      token: 'stale',
+      uploadUrl: 'https://example.test/upload',
+    })
+
+    await expect(call).rejects.toThrow(/OCC_ARTIFACTS_TOKEN/)
+    await expect(call).rejects.toThrow(/OCC_ARTIFACTS_BACKEND/)
+  })
+
+  test('turns an unreachable host into an actionable message', async () => {
+    globalThis.fetch = mock(() =>
+      Promise.reject(new Error('getaddrinfo ENOTFOUND example.test')),
+    ) as unknown as typeof fetch
+
+    const call = uploadArtifact({
+      html: '<p/>',
+      token: 't',
+      uploadUrl: 'https://example.test/upload',
+    })
+
+    await expect(call).rejects.toThrow(/cannot reach https:\/\/example\.test/)
+    await expect(call).rejects.toThrow(/ENOTFOUND/)
+    await expect(call).rejects.toThrow(/OCC_ARTIFACTS_URL/)
+  })
+
   test('throws on non-JSON body', async () => {
     globalThis.fetch = mock((_u: string | URL | Request) =>
       Promise.resolve(new Response('Internal Server Error', { status: 500 })),

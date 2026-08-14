@@ -114,7 +114,7 @@ REPL で `/login` を実行し、**Anthropic Compatible** を選ぶと、Anthrop
 | --- | --- | --- |
 | **Goal による継続実行** | `/goal <objective>` で目標を設定すると、完了までターンをまたいでエージェントを駆動します。トークン予算、completion/blocked の監査、`pause`/`resume`/`continue`/`clear` 付き | [`src/commands/goal/`](./src/commands/goal/) |
 | **Ultracode マルチエージェント編成** | `/ultracode` と `Workflow` ツールで決定論的な JS スクリプト（`agent`/`pipeline`/`parallel`/`phase`）を実行。`/workflows` でライブパネルを表示し、ジャーナル再生と同時実行数の上限に対応 | [ドキュメント](./docs/zh/features/workflow-scripts.md) |
-| **Artifacts** | モデルが HTML／ダッシュボード／レポートを公開 URL にアップロード（7 日／30 日で失効）。Cloudflare Worker + R2 でセルフホスト可能 | [ドキュメント](./packages/cloud-artifacts/README.md) |
+| **Artifacts** | モデルが HTML／ダッシュボード／レポートを単独ページとして生成。既定はローカル出力（`file://`）で、公開 URL への発行は明示的に設定した場合のみ（7 日／30 日で失効、Cloudflare Worker + R2 でセルフホスト可能） | [ドキュメント](./packages/cloud-artifacts/README.md) |
 | **ACP プロトコル** | Zed、Cursor などの IDE と接続。セッション再開、Skills、権限のブリッジに対応 | [ドキュメント](./docs/zh/features/acp-zed.md) |
 | **Remote Control** | `occ remote-control` は occ 自身の ACP エージェント経由でセッションを [Happy](https://github.com/slopus/happy)（スマートフォン／Web／エンドツーエンド暗号化）に引き渡します。サーバーはセルフホスト可能 | [ドキュメント](./docs/zh/features/remote-control-self-hosting.md) |
 | **Langfuse モニタリング** | エージェントループの詳細をすべて確認でき、ワンクリックでデータセット化 | [ドキュメント](./docs/zh/features/langfuse-monitoring.md) |

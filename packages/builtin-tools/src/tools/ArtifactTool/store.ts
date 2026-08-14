@@ -1,23 +1,22 @@
 import { workerStore } from './client.js'
 import { getArtifactsBackend } from './config.js'
+import { localStore } from './localStore.js'
 import { rustypasteStore } from './rustypasteStore.js'
+import type { ArtifactStore } from './types.js'
 
-export type ArtifactUploadInput = {
-  html: string
-  hash?: string
-  ttlDays: 7 | 30
-}
-
-export type ArtifactUploadResult = {
-  id: string
-  url: string
-  expiresAt?: string
-}
-
-export interface ArtifactStore {
-  upload(input: ArtifactUploadInput): Promise<ArtifactUploadResult>
-}
+export type {
+  ArtifactStore,
+  ArtifactUploadInput,
+  ArtifactUploadResult,
+} from './types.js'
 
 export function getArtifactStore(): ArtifactStore {
-  return getArtifactsBackend() === 'rustypaste' ? rustypasteStore : workerStore
+  switch (getArtifactsBackend()) {
+    case 'worker':
+      return workerStore
+    case 'rustypaste':
+      return rustypasteStore
+    default:
+      return localStore
+  }
 }

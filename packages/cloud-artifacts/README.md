@@ -1,8 +1,25 @@
 # cloud-artifacts
 
+> **CLI 默认不再使用这个服务。** 2026-08-13 起 `artifact` 工具默认走 `local`
+> 后端：页面写到 `<occ 配置目录>/artifacts/<id>.html`，返回 `file://` 路径，
+> 不联网。本服务变成 **opt-in 的自建 / 共享后端**，要用必须两个都显式配：
+>
+> ```bash
+> export OCC_ARTIFACTS_BACKEND=worker
+> export OCC_ARTIFACTS_TOKEN=<你的 TOKEN>     # 没有它 CLI 直接报错，不发请求
+> export OCC_ARTIFACTS_URL=https://<你的部署>  # 省略则用下面的生产出口
+> ```
+>
+> **CLI 里再没有可用的内置 token。** `ARTIFACTS_DEFAULT_TOKEN`
+> （`packages/builtin-tools/src/tools/ArtifactTool/config.ts`）已标注 known-stale：
+> 2026-08-13 实测生产出口对它回 `{"error":"unauthorized"}`——部署轮换过 TOKEN 而
+> 没有配套发 CLI 版本，于是每个用户的上传都在静默失败（Deno Deploy 把状态压平成
+> 200，失败看起来不像失败）。常量保留是因为轮换协议（见下文）依赖它，且自建部署
+> 可能仍认它；但它**永远不会**被当默认值使用。
+>
 > **生产出口**：`https://cloud-artifacts.claude-code-best.win`
 >
-> CLI 的 ArtifactTool 通过单一 bearer token 上传 HTML，得到一个公开可访问的 URL。
+> ArtifactTool 通过单一 bearer token 上传 HTML，得到一个公开可访问的 URL。
 > 文件到期由 R2 lifecycle rule 自动删除（默认 7 天，最长 30 天）。
 
 ## Quickstart
@@ -141,6 +158,10 @@ export OCC_ARTIFACTS_URL=https://artifacts.example.com
 export OCC_ARTIFACTS_TOKEN=<auth-token>
 ```
 
+All three variables are required: without `OCC_ARTIFACTS_BACKEND` the tool
+stays on the local backend, and without a token it fails with an explanatory
+error instead of sending an unauthenticated request.
+
 `OCC_ARTIFACTS_URL` is the rustypaste server root. The token must match
 rustypaste's `AUTH_TOKEN`, `AUTH_TOKENS_FILE`, or `[server].auth_tokens`
 configuration. ArtifactTool sends it as a raw `Authorization` value, as
@@ -188,9 +209,10 @@ bun run deploy
 
 ### Bearer token rotation
 
-Deploy the Worker before releasing a CLI version that contains a new token.
-During the release window, the Worker accepts both the current token and the
-previous token:
+Since the CLI no longer carries a usable default token, a rotation no longer
+needs a matching CLI release — users pick the new value up through
+`OCC_ARTIFACTS_TOKEN`. Keep the overlap window anyway so sessions started
+before the rotation keep working:
 
 ```bash
 cd packages/cloud-artifacts

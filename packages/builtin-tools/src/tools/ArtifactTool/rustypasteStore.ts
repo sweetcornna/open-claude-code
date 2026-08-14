@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
 import { getArtifactsBaseUrl, getArtifactsToken } from './config.js'
+import { unauthorizedMessage, unreachableMessage } from './errors.js'
 import type { ArtifactStore } from './store.js'
 
 export const rustypasteStore: ArtifactStore = {
@@ -17,18 +18,30 @@ export const rustypasteStore: ArtifactStore = {
       `artifact-${randomUUID()}.html`,
     )
 
-    const response = await fetch(getArtifactsBaseUrl(), {
-      method: 'POST',
-      headers: {
-        // Rustypaste expects the upload token verbatim, unlike the Worker's
-        // `Bearer <token>` authorization scheme.
-        Authorization: getArtifactsToken(),
-        expire: `${ttlDays}d`,
-      },
-      body: form,
-    })
+    const baseUrl = getArtifactsBaseUrl()
+    // Read before the request so a missing token never costs a round trip.
+    const token = getArtifactsToken('rustypaste')
+
+    let response: Response
+    try {
+      response = await fetch(baseUrl, {
+        method: 'POST',
+        headers: {
+          // Rustypaste expects the upload token verbatim, unlike the Worker's
+          // `Bearer <token>` authorization scheme.
+          Authorization: token,
+          expire: `${ttlDays}d`,
+        },
+        body: form,
+      })
+    } catch (e) {
+      throw new Error(unreachableMessage(baseUrl, e))
+    }
     const body = (await response.text()).trim()
 
+    if (response.status === 401 || response.status === 403) {
+      throw new Error(unauthorizedMessage())
+    }
     if (!response.ok) {
       const detail = body ? `: ${body.slice(0, 200)}` : ''
       throw new Error(

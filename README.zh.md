@@ -134,7 +134,7 @@ bun run build    # 构建
 | **🎯 Goal 持续驱动** | `/goal <objective>` 设定目标后自动跨轮驱动 agent 直至完成；带 token budget、completion/blocked audit 与 `pause`/`resume`/`continue`/`clear` | [`src/commands/goal/`](./src/commands/goal/) |
 | **🧠 Ultracode 多 Agent 编排** | `/ultracode` + `Workflow` 工具跑确定性 JS 脚本（`agent`/`pipeline`/`parallel`/`phase`），`/workflows` 双栏监控面板，支持 journal 重放与并发上限 | [文档](./docs/zh/features/workflow-scripts.md) |
 | **🧩 插件市场** | 首次启动自动装上官方 `claude-plugins-official`（300+ 插件），`/plugin` 浏览安装；保留名只认 `github.com/anthropics/*` 严格来源 | `/plugin` |
-| **📦 Artifacts** | 模型把 HTML/看板/报告上传到公开 URL（7d/30d 自动过期），Cloudflare Worker + R2 可自托管 | [说明](./packages/cloud-artifacts/README.md) |
+| **📦 Artifacts** | 模型把 HTML/看板/报告渲染成独立页面。默认落到本地（`file://`）；显式配置后才上传到公开 URL（7d/30d 自动过期，Cloudflare Worker + R2 可自托管） | [说明](./packages/cloud-artifacts/README.md) |
 | **ACP 协议支持** | 接入 Zed、Cursor 等 IDE，支持会话恢复、Skills、权限桥接 | [文档](./docs/zh/features/acp-zed.md) |
 | **Remote Control** | `occ remote-control` 把会话交给 [Happy](https://github.com/slopus/happy)（手机 / Web / 端到端加密），走的是 occ 自己的 ACP agent；服务端可自托管 | [文档](./docs/zh/features/remote-control-self-hosting.md) |
 | **Langfuse 监控** | 每次 agent loop 的细节都能看到，可一键转为数据集 | [文档](./docs/zh/features/langfuse-monitoring.md) |

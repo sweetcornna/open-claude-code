@@ -91,7 +91,7 @@ Open Claude Code 保留权限系统、沙箱、Plan Mode、Auto Mode、MCP、Ski
 | 特性 | 说明 |
 | --- | --- |
 | Goal 持续驱动 | `/goal <objective>` 设定目标后跨轮推进，支持 token budget、完成/阻塞审计及 `pause`、`resume`、`continue`、`clear` |
-| Artifacts | 将 HTML、看板和报告上传到公开 URL，支持 7/30 天自动过期和自托管 |
+| Artifacts | 把 HTML、看板和报告渲染成独立页面。默认写到本地配置目录（`file://`，不出机器）；显式配置后才上传到自托管或共享的公开 URL |
 | Dynamic Workflow | `/ultracode` + `Workflow` 工具运行确定性 JS 编排，支持 journal 重放、token budget 和并发上限 |
 | ACP | 接入 Zed 等支持 ACP 的客户端，支持会话恢复、Skills 和权限桥接 |
 | Remote Control | Docker 自托管远程界面，可从其他设备查看和控制会话 |

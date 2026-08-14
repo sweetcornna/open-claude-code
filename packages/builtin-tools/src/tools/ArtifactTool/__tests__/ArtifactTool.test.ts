@@ -1,7 +1,24 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import { fileURLToPath } from 'url'
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from 'bun:test'
 import { ArtifactTool } from '../ArtifactTool.js'
 
 const TEST_DIR = join(tmpdir(), 'artifact-tool-test')
@@ -12,6 +29,17 @@ const MISSING_FILE = join(TEST_DIR, 'does-not-exist.html')
 const DIR_AS_FILE = TEST_DIR
 
 const originalFetch = globalThis.fetch
+
+function seedFiles() {
+  mkdirSync(TEST_DIR, { recursive: true })
+  writeFileSync(TEST_FILE, '<h1>test report</h1>', 'utf8')
+  writeFileSync(
+    MD_FILE,
+    '# MD Report\n\n| a | b |\n| - | - |\n| 1 | 2 |\n',
+    'utf8',
+  )
+  writeFileSync(TXT_FILE, 'plain text content', 'utf8')
+}
 
 function mockFetchSuccess(body: object): typeof fetch {
   return mock(() =>
@@ -24,22 +52,18 @@ function mockFetchSuccess(body: object): typeof fetch {
   ) as unknown as typeof fetch
 }
 
-describe('ArtifactTool.call', () => {
+describe('ArtifactTool.call (worker backend)', () => {
   beforeEach(() => {
-    mkdirSync(TEST_DIR, { recursive: true })
-    writeFileSync(TEST_FILE, '<h1>test report</h1>', 'utf8')
-    writeFileSync(
-      MD_FILE,
-      '# MD Report\n\n| a | b |\n| - | - |\n| 1 | 2 |\n',
-      'utf8',
-    )
-    writeFileSync(TXT_FILE, 'plain text content', 'utf8')
+    seedFiles()
+    // The worker backend is opt-in now; the default is local.
+    process.env.OCC_ARTIFACTS_BACKEND = 'worker'
     process.env.CLAUDE_ARTIFACTS_TOKEN = 'test-token'
     process.env.CLAUDE_ARTIFACTS_URL = 'https://example.test'
   })
 
   afterEach(() => {
     if (existsSync(TEST_DIR)) rmSync(TEST_DIR, { recursive: true, force: true })
+    delete process.env.OCC_ARTIFACTS_BACKEND
     delete process.env.CLAUDE_ARTIFACTS_TOKEN
     delete process.env.CLAUDE_ARTIFACTS_URL
     globalThis.fetch = originalFetch
@@ -161,24 +185,156 @@ describe('ArtifactTool.call', () => {
     )
     expect((result.data as { error?: string }).error).toContain('.md')
   })
+
+  test('fails without a network request when no token is configured', async () => {
+    delete process.env.CLAUDE_ARTIFACTS_TOKEN
+    let fetchCalled = false
+    globalThis.fetch = mock(() => {
+      fetchCalled = true
+      return Promise.resolve(new Response('{}'))
+    }) as unknown as typeof fetch
+
+    const result = await ArtifactTool.call({ file_path: TEST_FILE, ttl: 7 })
+
+    expect(fetchCalled).toBe(false)
+    const error = (result.data as { error?: string }).error ?? ''
+    expect(error).toContain('OCC_ARTIFACTS_TOKEN')
+    expect(error).toContain('OCC_ARTIFACTS_BACKEND')
+  })
+})
+
+describe('ArtifactTool.call (default local backend)', () => {
+  const savedOcc = process.env.OCC_CONFIG_DIR
+  const savedClaude = process.env.CLAUDE_CONFIG_DIR
+  const savedBackend = process.env.OCC_ARTIFACTS_BACKEND
+  let configDir: string
+
+  beforeAll(() => {
+    configDir = mkdtempSync(join(tmpdir(), 'occ-artifact-tool-'))
+    process.env.OCC_CONFIG_DIR = configDir
+    process.env.CLAUDE_CONFIG_DIR = configDir
+    delete process.env.OCC_ARTIFACTS_BACKEND
+  })
+
+  afterAll(() => {
+    rmSync(configDir, { recursive: true, force: true })
+    if (savedOcc === undefined) delete process.env.OCC_CONFIG_DIR
+    else process.env.OCC_CONFIG_DIR = savedOcc
+    if (savedClaude === undefined) delete process.env.CLAUDE_CONFIG_DIR
+    else process.env.CLAUDE_CONFIG_DIR = savedClaude
+    if (savedBackend !== undefined)
+      process.env.OCC_ARTIFACTS_BACKEND = savedBackend
+  })
+
+  beforeEach(() => {
+    seedFiles()
+    // Any HTTP traffic at all is a bug for the local backend.
+    globalThis.fetch = mock(() => {
+      throw new Error('local backend must not make network requests')
+    }) as unknown as typeof fetch
+  })
+
+  afterEach(() => {
+    if (existsSync(TEST_DIR)) rmSync(TEST_DIR, { recursive: true, force: true })
+    globalThis.fetch = originalFetch
+  })
+
+  test('writes the converted page under the config dir and returns file://', async () => {
+    const result = await ArtifactTool.call({ file_path: MD_FILE, ttl: 7 })
+    const data = result.data as {
+      id: string
+      url: string
+      expiresAt: string
+      error?: string
+    }
+
+    expect(data.error).toBeUndefined()
+    expect(data.expiresAt).toBe('')
+    expect(data.url.startsWith('file://')).toBe(true)
+
+    const filePath = fileURLToPath(data.url)
+    expect(filePath).toBe(join(configDir, 'artifacts', `${data.id}.html`))
+    const written = readFileSync(filePath, 'utf8')
+    expect(written).toContain('<h1>MD Report</h1>')
+    expect(written).toContain('@media (prefers-color-scheme: dark)')
+  })
+
+  test('stores .html input byte-for-byte', async () => {
+    const result = await ArtifactTool.call({ file_path: TEST_FILE, ttl: 7 })
+    const data = result.data as { url: string }
+
+    expect(readFileSync(fileURLToPath(data.url), 'utf8')).toBe(
+      '<h1>test report</h1>',
+    )
+  })
+
+  test('the same hash overwrites in place', async () => {
+    const first = await ArtifactTool.call({
+      file_path: TEST_FILE,
+      hash: 'pinned',
+      ttl: 7,
+    })
+    writeFileSync(TEST_FILE, '<h1>second revision</h1>', 'utf8')
+    const second = await ArtifactTool.call({
+      file_path: TEST_FILE,
+      hash: 'pinned',
+      ttl: 7,
+    })
+
+    const a = first.data as { id: string; url: string }
+    const b = second.data as { id: string; url: string }
+    expect(b.id).toBe('pinned')
+    expect(b.url).toBe(a.url)
+    expect(readFileSync(fileURLToPath(b.url), 'utf8')).toBe(
+      '<h1>second revision</h1>',
+    )
+  })
+
+  test('the tool result tells the model the artifact is local', async () => {
+    const result = await ArtifactTool.call({ file_path: TEST_FILE, ttl: 7 })
+    const block = ArtifactTool.mapToolResultToToolResultBlockParam!(
+      result.data as never,
+      'toolu_1',
+    )
+
+    expect(String(block.content)).toContain('Artifact saved locally: file://')
+    expect(String(block.content)).not.toContain('expires:')
+  })
 })
 
 describe('getArtifactsToken', () => {
-  test('falls back to the baked default when both env overrides are unset', async () => {
+  test('refuses to fall back to the known-stale baked-in token', async () => {
     const savedOcc = process.env.OCC_ARTIFACTS_TOKEN
     const savedClaude = process.env.CLAUDE_ARTIFACTS_TOKEN
     delete process.env.OCC_ARTIFACTS_TOKEN
     delete process.env.CLAUDE_ARTIFACTS_TOKEN
     try {
-      const { getArtifactsToken, ARTIFACTS_DEFAULT_TOKEN } = await import(
+      const { getArtifactsToken, getConfiguredArtifactsToken } = await import(
         '../config.js'
       )
-      expect(getArtifactsToken()).toBe(ARTIFACTS_DEFAULT_TOKEN)
-      expect(ARTIFACTS_DEFAULT_TOKEN).not.toContain('claude-code-best')
+      expect(getConfiguredArtifactsToken()).toBeUndefined()
+      // The whole point: no doomed request is ever built from the stale value.
+      expect(() => getArtifactsToken('worker')).toThrow(/needs an upload token/)
+      expect(() => getArtifactsToken('worker')).toThrow(/OCC_ARTIFACTS_TOKEN/)
     } finally {
       if (savedOcc !== undefined) process.env.OCC_ARTIFACTS_TOKEN = savedOcc
       if (savedClaude !== undefined)
         process.env.CLAUDE_ARTIFACTS_TOKEN = savedClaude
+    }
+  })
+
+  test('the stale constant is kept for deployments that still accept it', async () => {
+    const savedOcc = process.env.OCC_ARTIFACTS_TOKEN
+    process.env.OCC_ARTIFACTS_TOKEN = 'explicit'
+    try {
+      const { getArtifactsToken, ARTIFACTS_DEFAULT_TOKEN } = await import(
+        '../config.js'
+      )
+      expect(getArtifactsToken('worker')).toBe('explicit')
+      expect(ARTIFACTS_DEFAULT_TOKEN).not.toContain('claude-code-best')
+    } finally {
+      if (savedOcc === undefined) delete process.env.OCC_ARTIFACTS_TOKEN
+      else process.env.OCC_ARTIFACTS_TOKEN = savedOcc
     }
   })
 })

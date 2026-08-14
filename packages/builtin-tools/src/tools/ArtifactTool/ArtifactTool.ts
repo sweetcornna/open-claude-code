@@ -8,6 +8,7 @@ import {
   describeArtifactTool,
   getArtifactToolPrompt,
 } from './prompt.js'
+import { isLocalArtifactUrl } from './localStore.js'
 import { markdownToHtml } from './markdown.js'
 import { getArtifactStore } from './store.js'
 import { renderToolResultMessage } from './UI.js'
@@ -17,19 +18,21 @@ const inputSchema = lazySchema(() =>
     file_path: z
       .string()
       .describe(
-        'Absolute path to a local HTML (.html/.htm) or Markdown (.md/.markdown) file to upload. Markdown is converted to styled HTML before upload.',
+        'Absolute path to a local HTML (.html/.htm) or Markdown (.md/.markdown) file. Markdown is converted to a self-contained HTML page first.',
       ),
     hash: z
       .string()
       .regex(/^[A-Za-z0-9_-]{1,128}$/, 'must match ^[A-Za-z0-9_-]{1,128}$')
       .optional()
       .describe(
-        'Worker backend only. If provided, overwrites the existing artifact with this hash (URL stays stable). If omitted, a new random id is generated.',
+        'Overwrite the artifact with this id in place, keeping its URL stable; omit for a new random id. Supported by the local and worker backends; rustypaste rejects it.',
       ),
     ttl: z
       .union([z.literal(7), z.literal(30)])
       .default(7)
-      .describe('Lifetime in days. Must be 7 or 30. Default 7.'),
+      .describe(
+        'Lifetime in days (7 or 30) for the worker and rustypaste backends. Ignored by the local backend, which never expires artifacts.',
+      ),
   }),
 )
 type InputSchema = ReturnType<typeof inputSchema>
@@ -49,7 +52,7 @@ export type ArtifactOutput = z.infer<OutputSchema>
 export const ArtifactTool = buildTool({
   name: ARTIFACT_TOOL_NAME,
   searchHint:
-    'upload html markdown artifact share url cloud publish progress report public link',
+    'artifact html markdown render page save local file open browser share upload publish cloud report dashboard url link',
   maxResultSizeChars: 2_000,
   shouldDefer: true,
   strict: true,
@@ -86,7 +89,7 @@ export const ArtifactTool = buildTool({
 
   renderToolUseMessage(input: Partial<ArtifactInput>) {
     const hashPart = input.hash ? ` (hash=${input.hash})` : ''
-    return `Upload artifact: ${input.file_path ?? '...'}${hashPart}`
+    return `Artifact: ${input.file_path ?? '...'}${hashPart}`
   },
 
   mapToolResultToToolResultBlockParam(
@@ -102,10 +105,15 @@ export const ArtifactTool = buildTool({
       }
     }
     const expiry = content.expiresAt ? `, expires: ${content.expiresAt}` : ''
+    // "uploaded" would be a lie for the local backend, and the model needs to
+    // know whether it may hand this URL to someone else.
+    const verb = isLocalArtifactUrl(content.url)
+      ? 'Artifact saved locally'
+      : 'Artifact uploaded'
     return {
       tool_use_id: toolUseID,
       type: 'tool_result',
-      content: `Artifact uploaded: ${content.url} (id: ${content.id}${expiry})`,
+      content: `${verb}: ${content.url} (id: ${content.id}${expiry})`,
     }
   },
   renderToolResultMessage,
@@ -144,7 +152,7 @@ export const ArtifactTool = buildTool({
           id: '',
           url: '',
           expiresAt: '',
-          error: `File is ${size} bytes; backend limit is 10MB.`,
+          error: `File is ${size} bytes; the artifact size limit is 10MB.`,
         },
       }
     }

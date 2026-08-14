@@ -1,25 +1,22 @@
 export const ARTIFACT_TOOL_NAME = 'artifact'
 
 export async function describeArtifactTool(): Promise<string> {
-  return 'Upload an HTML or Markdown file to the configured artifact hosting service and get back a public URL. Markdown files are converted to styled HTML before upload. With the worker backend, pass `hash` to overwrite a previously-uploaded artifact (keeps URL stable).'
+  return 'Render a local HTML or Markdown file into a standalone HTML page. By default the page is written into the occ config directory and the returned URL is a local `file://` path — nothing is uploaded and the link is not shareable. Set OCC_ARTIFACTS_BACKEND=worker|rustypaste to publish to a configured host instead.'
 }
 
 export async function getArtifactToolPrompt(): Promise<string> {
-  return `Upload an HTML or Markdown file to a public hosting service and return a shareable URL plus an internal \`id\` (the "hash").
+  return `Render a local HTML or Markdown file into a standalone HTML page and return \`{ id, url, expiresAt }\`.
+
+## Where the page goes
+\`OCC_ARTIFACTS_BACKEND\` decides this, not a tool parameter:
+- \`local\` (default): writes \`<occ config dir>/artifacts/<id>.html\` and returns a \`file://\` URL. Nothing leaves the machine, so that URL opens only on this user's computer — never present it as a link to share. \`expiresAt\` is empty, \`ttl\` has no effect, and the file is never auto-deleted.
+- \`worker\` / \`rustypaste\`: uploads to \`OCC_ARTIFACTS_URL\` and returns a URL anyone holding it can read. Both need \`OCC_ARTIFACTS_TOKEN\`; without it the call fails before any request is made.
 
 ## Inputs
-- \`file_path\` (required): absolute path to a local HTML (\`.html\`/\`.htm\`) or Markdown (\`.md\`/\`.markdown\`) file. Markdown is converted to a styled HTML document before upload — just author plain Markdown (headings, lists, GFM tables, fenced code blocks, blockquotes) and the tool wraps it in a page with a neutral stylesheet.
-- \`hash\` (optional, worker backend only): if provided, overwrites the artifact with the same hash (URL stays the same). If omitted, a new random id is generated. The rustypaste backend rejects custom hashes.
-- \`ttl\` (optional, default \`7\`): artifact lifetime in days. Must be \`7\` or \`30\`.
+Markdown becomes a styled page — responsive, follows the reader's light/dark preference, syntax-highlights fenced code and renders \`mermaid\` fences as diagrams — so author plain Markdown (headings, lists, GFM tables, fenced code, mermaid fences, blockquotes) and let the tool style it. Styling is inline; only the highlighter and mermaid come from a pinned CDN, and the page stays readable without them. An \`.html\` file is stored byte-for-byte and must carry its own styling. Accepted extensions: \`.html\`, \`.htm\`, \`.md\`, \`.markdown\`; 10MB limit.
 
-## Output
-\`{ id, url, expiresAt }\` — \`id\` identifies the uploaded file, \`url\` is publicly accessible, and \`expiresAt\` is empty when the backend does not provide an exact timestamp.
-
-## Workflow
-1. Use the Write tool to create a local \`.html\` or \`.md\` file.
-2. Call this tool with its \`file_path\`.
-3. With the worker backend, pass back the \`id\` returned from the first call as \`hash\` when iterating so the URL stays stable.
+Pass the \`id\` from an earlier call back as \`hash\` to replace that artifact in place, keeping its URL stable, instead of accumulating copies. \`local\` and \`worker\` support this; \`rustypaste\` rejects it.
 
 ## Errors
-The tool surfaces backend error codes verbatim (e.g. \`payload_too_large\`, \`unauthorized\`). If the file does not exist, is not a regular file, or has an unsupported extension, the tool returns an \`error\` field without making an HTTP request. Accepted extensions: \`.html\`, \`.htm\`, \`.md\`, \`.markdown\`.`
+Returned in the \`error\` field. A missing file, an unsupported extension, and a missing upload token are all reported without any network request; remaining backend error codes (e.g. \`payload_too_large\`) are passed through verbatim.`
 }
