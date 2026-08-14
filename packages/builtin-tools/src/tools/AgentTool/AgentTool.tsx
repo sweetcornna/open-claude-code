@@ -155,6 +155,12 @@ const baseInputSchema = lazySchema(() =>
       .describe(
         'Imperative summary of the task, 2-4 words. Rendered verbatim in the agent status list — one line per agent, beside the agent type — so it stays scannable when several run at once.',
       ),
+    objective: z
+      .string()
+      .optional()
+      .describe(
+        "One sentence naming this agent's goal and the scope it owns. It replaces the live tool-activity line under this agent in the status list for as long as it runs, so concurrent agents can be told apart at a glance. Keep it to one line — longer values are truncated. Derived from the prompt when omitted.",
+      ),
     prompt: z.string().describe('The task for the agent to perform'),
     subagent_type: z.string().optional().describe('The type of specialized agent to use for this task'),
     model: z

@@ -91,6 +91,7 @@ ${forkEnabled ? 'When spawning an agent without `fork: true`, it starts with zer
 - Explain what you're trying to accomplish and why, what you've already learned or ruled out, and enough context for the agent to make judgment calls.
 - If you need a short response, say so ("report in under 200 words").
 - Lookups: hand over the exact command. Investigations: hand over the question — prescribed steps become dead weight when the premise is wrong.
+- Set \`objective\` to one sentence naming what this agent owns. It is the line the user watches while the agent runs, and when several run at once it is what tells them apart.
 
 ${forkEnabled ? 'For non-fork agents, terse' : 'Terse'} command-style prompts produce shallow, generic work.
 

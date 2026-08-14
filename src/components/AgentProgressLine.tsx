@@ -1,5 +1,6 @@
 import * as React from 'react';
-import { Box, Text } from '@anthropic/ink';
+import { Box, Text, stringWidth, wrapText } from '@anthropic/ink';
+import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import { formatNumber } from '../utils/text/format.js';
 import type { Theme } from '../utils/terminal/theme.js';
 
@@ -17,9 +18,18 @@ type Props = {
   isError: boolean;
   isAsync?: boolean;
   shouldAnimate: boolean;
+  /**
+   * What the parent sent this agent to do. Shown instead of the live tool
+   * activity while the agent runs — with several agents in the list, "who owns
+   * what" is the thing the user needs, not what each one is touching right now.
+   */
+  objective?: string | null;
   lastToolInfo?: string | null;
   hideType?: boolean;
 };
+
+/** Left indent shared by both rows of an agent entry, in terminal columns. */
+const TREE_PADDING_LEFT = 3;
 
 export function AgentProgressLine({
   agentType,
@@ -35,15 +45,24 @@ export function AgentProgressLine({
   isError: _isError,
   isAsync = false,
   shouldAnimate: _shouldAnimate,
+  objective,
   lastToolInfo,
   hideType = false,
 }: Props): React.ReactNode {
+  const { columns } = useTerminalSize();
   const treeChar = isLast ? '└─' : '├─';
   const isBackgrounded = isAsync && isResolved;
+  const statusPrefix = isLast ? '   ⎿  ' : '│  ⎿  ';
 
   // Determine the status text
   const getStatusText = (): string => {
     if (!isResolved) {
+      if (objective) {
+        // The objective is already capped in characters; clamp it again to the
+        // columns actually left after the indent so the row can't wrap.
+        const available = columns - TREE_PADDING_LEFT - stringWidth(statusPrefix);
+        return wrapText(objective, Math.max(1, available), 'truncate-end');
+      }
       return lastToolInfo || 'Initializing…';
     }
     if (isBackgrounded) {
@@ -54,7 +73,7 @@ export function AgentProgressLine({
 
   return (
     <Box flexDirection="column">
-      <Box paddingLeft={3}>
+      <Box paddingLeft={TREE_PADDING_LEFT}>
         <Text dimColor>{treeChar} </Text>
         <Text dimColor={!isResolved}>
           {hideType ? (
@@ -88,8 +107,8 @@ export function AgentProgressLine({
         </Text>
       </Box>
       {!isBackgrounded && (
-        <Box paddingLeft={3} flexDirection="row">
-          <Text dimColor>{isLast ? '   ⎿  ' : '│  ⎿  '}</Text>
+        <Box paddingLeft={TREE_PADDING_LEFT} flexDirection="row">
+          <Text dimColor>{statusPrefix}</Text>
           <Text dimColor>{getStatusText()}</Text>
         </Box>
       )}

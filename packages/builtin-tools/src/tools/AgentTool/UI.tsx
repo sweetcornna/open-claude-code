@@ -28,6 +28,7 @@ import type { Theme, ThemeName } from 'src/utils/terminal/theme.js';
 import type { outputSchema, Progress, RemoteLaunchedOutput } from './AgentTool.js';
 import { inputSchema } from './AgentTool.js';
 import { getAgentColor } from './agentColorManager.js';
+import { deriveAgentObjective } from './agentObjective.js';
 import { GENERAL_PURPOSE_AGENT } from './built-in/generalPurposeAgent.js';
 import { BetaUsage } from '@anthropic-ai/sdk/resources/beta.mjs';
 
@@ -764,8 +765,16 @@ export function renderGroupedAgentToolUse(
   // Calculate stats for each agent
   const agentStats = toolUses.map(({ param, isResolved, isError, progressMessages, result }) => {
     const stats = calculateAgentStats(progressMessages);
-    const lastToolInfo = extractLastToolInfo(progressMessages, tools);
     const parsedInput = inputSchema().safeParse(param.input);
+
+    // What the parent sent this agent to do — the status line while it runs.
+    // Unparseable input (still streaming) has nothing to derive it from.
+    const objective = parsedInput.success ? deriveAgentObjective(parsedInput.data) : null;
+    // extractLastToolInfo reverse-scans the whole progress list. It is only
+    // ever displayed when there is no objective, so don't pay for it on every
+    // render of every agent otherwise — `description` is a required field, so
+    // a parsed input essentially always yields an objective.
+    const lastToolInfo = objective === null ? extractLastToolInfo(progressMessages, tools) : null;
 
     // teammate_spawned is not part of the exported Output type (cast through unknown
     // for dead code elimination), so check via string comparison on the raw value
@@ -811,6 +820,7 @@ export function renderGroupedAgentToolUse(
       isAsync,
       color,
       descriptionColor,
+      objective,
       lastToolInfo,
       taskDescription,
       name,
@@ -869,6 +879,7 @@ export function renderGroupedAgentToolUse(
           isError={stat.isError}
           isAsync={stat.isAsync}
           shouldAnimate={shouldAnimate}
+          objective={stat.objective}
           lastToolInfo={stat.lastToolInfo}
           hideType={allSameType}
           name={stat.name}
