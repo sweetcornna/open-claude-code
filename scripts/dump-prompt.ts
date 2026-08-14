@@ -1,202 +1,29 @@
 /**
- * dump-prompt.ts — 生成完整 system prompt 用于人工检查格式和内容。
- * Usage: bun run scripts/dump-prompt.ts
+ * dump-prompt.ts — 渲染完整 system prompt，用于人工审读格式与内容。
+ *
+ * 改 prompt 前后各跑一次、diff 两份输出，是这个仓库里唯一能看到「模型实际
+ * 收到什么」的手段 —— 单测只断言若干锚点句，看不出段落顺序、空行、以及
+ * 被门控掉的整段。
+ *
+ * Usage: bun run scripts/dump-prompt.ts [model-id]
  */
-import { mock } from 'bun:test'
+import {
+  setupSystemPromptMocks,
+  SYSTEM_PROMPT_MOCK_TOOLS,
+} from '../tests/mocks/systemPromptEnv.js'
 
-// --- Mock chain (block side-effects) ---
-mock.module('src/bootstrap/state.js', () => ({
-  getIsNonInteractiveSession: () => false,
-  sessionId: 'test-session',
-  getCwd: () => '/test/project',
-}))
-mock.module('src/utils/filesystem/cwd.js', () => ({
-  getCwd: () => '/test/project',
-}))
-mock.module('src/utils/git/git.js', () => ({ getIsGit: async () => true }))
-mock.module('src/utils/git/worktree.js', () => ({
-  getCurrentWorktreeSession: () => null,
-}))
-mock.module('src/constants/common.js', () => ({
-  getSessionStartDate: () => '2026-04-22',
-}))
-mock.module('src/utils/settings/settings.js', () => ({
-  getInitialSettings: () => ({ language: undefined }),
-  getSettings: () => ({}),
-  getSettings_DEPRECATED: () => ({}),
-  getCachedOrDefaultSettings: () => ({}),
-  updateSettingsForSource: () => ({ error: null }),
-  getSettingsForSource: () => ({}),
-}))
-mock.module('src/commands/poor/poorMode.js', () => ({
-  isPoorModeActive: () => false,
-}))
-mock.module('src/utils/config/env.js', () => ({ env: { platform: 'linux' } }))
-mock.module('src/utils/config/envUtils.js', () => ({
-  isEnvTruthy: () => false,
-  isEnvDefinedFalsy: () => false,
-  getClaudeConfigHomeDir: () => '/tmp/occ-dump-prompt',
-}))
-mock.module('src/utils/model/model.js', () => ({
-  getCanonicalName: (id: string) => id,
-  getMarketingNameForModel: (id: string) => {
-    if (id.includes('opus-4-7')) return 'Claude Opus 4.7'
-    if (id.includes('opus-4-6')) return 'Claude Opus 4.6'
-    if (id.includes('sonnet-4-6')) return 'Claude Sonnet 4.6'
-    return null
-  },
-}))
-mock.module('src/commands.js', () => ({
-  getSkillToolCommands: async () => [],
-}))
-mock.module('src/constants/outputStyles.js', () => ({
-  getOutputStyleConfig: async () => null,
-}))
-mock.module('src/utils/tools/embeddedTools.js', () => ({
-  hasEmbeddedSearchTools: () => false,
-}))
-mock.module('src/utils/permissions/filesystem.js', () => ({
-  isScratchpadEnabled: () => false,
-  getScratchpadDir: () => '/tmp/scratchpad',
-}))
-mock.module('src/utils/model/betas.js', () => ({
-  shouldUseGlobalCacheScope: () => false,
-}))
-mock.module('src/utils/auth/undercover.js', () => ({
-  isUndercover: () => false,
-}))
-mock.module('src/utils/model/antModels.js', () => ({
-  getAntModelOverrideConfig: () => null,
-}))
-mock.module('src/utils/mcp/mcpInstructionsDelta.js', () => ({
-  isMcpInstructionsDeltaEnabled: () => false,
-}))
-mock.module('src/memdir/memdir.js', () => ({
-  loadMemoryPrompt: async () => null,
-}))
-mock.module('src/utils/telemetry/debug.js', () => ({
-  logForDebugging: () => {},
-}))
-mock.module('src/services/analytics/growthbook.js', () => ({
-  getFeatureValue_CACHED_MAY_BE_STALE: () => false,
-}))
-mock.module('bun:bundle', () => ({ feature: (_name: string) => false }))
-mock.module('src/constants/systemPromptSections.js', () => ({
-  systemPromptSection: (_name: string, fn: () => any) => ({
-    __deferred: true,
-    fn,
-  }),
-  DANGEROUS_uncachedSystemPromptSection: (_name: string, fn: () => any) => ({
-    __deferred: true,
-    fn,
-  }),
-  resolveSystemPromptSections: async (sections: any[]) => {
-    const results = await Promise.all(
-      sections.map((s: any) => (s?.__deferred ? s.fn() : s)),
-    )
-    return results.filter((s: any) => s !== null)
-  },
-}))
+setupSystemPromptMocks()
 
-// Tool name mocks
-mock.module(
-  '@open-claude-code/builtin-tools/tools/BashTool/toolName.js',
-  () => ({ BASH_TOOL_NAME: 'Bash' }),
-)
-mock.module(
-  '@open-claude-code/builtin-tools/tools/FileReadTool/prompt.js',
-  () => ({ FILE_READ_TOOL_NAME: 'Read' }),
-)
-mock.module(
-  '@open-claude-code/builtin-tools/tools/FileEditTool/constants.js',
-  () => ({ FILE_EDIT_TOOL_NAME: 'Edit' }),
-)
-mock.module(
-  '@open-claude-code/builtin-tools/tools/FileWriteTool/prompt.js',
-  () => ({ FILE_WRITE_TOOL_NAME: 'Write' }),
-)
-mock.module('@open-claude-code/builtin-tools/tools/GlobTool/prompt.js', () => ({
-  GLOB_TOOL_NAME: 'Glob',
-}))
-mock.module('@open-claude-code/builtin-tools/tools/GrepTool/prompt.js', () => ({
-  GREP_TOOL_NAME: 'Grep',
-}))
-mock.module(
-  '@open-claude-code/builtin-tools/tools/AgentTool/constants.js',
-  () => ({ AGENT_TOOL_NAME: 'Agent', VERIFICATION_AGENT_TYPE: 'verification' }),
-)
-mock.module(
-  '@open-claude-code/builtin-tools/tools/AgentTool/forkSubagent.js',
-  () => ({ isForkSubagentEnabled: () => false }),
-)
-mock.module(
-  '@open-claude-code/builtin-tools/tools/AgentTool/builtInAgents.js',
-  () => ({ areExplorePlanAgentsEnabled: () => false }),
-)
-mock.module(
-  '@open-claude-code/builtin-tools/tools/AgentTool/built-in/exploreAgent.js',
-  () => ({
-    EXPLORE_AGENT: { agentType: 'explore' },
-    EXPLORE_AGENT_MIN_QUERIES: 5,
-  }),
-)
-mock.module(
-  '@open-claude-code/builtin-tools/tools/AskUserQuestionTool/prompt.js',
-  () => ({ ASK_USER_QUESTION_TOOL_NAME: 'AskUserQuestion' }),
-)
-mock.module(
-  '@open-claude-code/builtin-tools/tools/TodoWriteTool/constants.js',
-  () => ({ TODO_WRITE_TOOL_NAME: 'TodoWrite' }),
-)
-mock.module(
-  '@open-claude-code/builtin-tools/tools/TaskCreateTool/constants.js',
-  () => ({ TASK_CREATE_TOOL_NAME: 'TaskCreate' }),
-)
-mock.module(
-  '@open-claude-code/builtin-tools/tools/DiscoverSkillsTool/prompt.js',
-  () => ({ DISCOVER_SKILLS_TOOL_NAME: 'DiscoverSkills' }),
-)
-mock.module(
-  '@open-claude-code/builtin-tools/tools/SkillTool/constants.js',
-  () => ({ SKILL_TOOL_NAME: 'Skill' }),
-)
-mock.module(
-  '@open-claude-code/builtin-tools/tools/REPLTool/constants.js',
-  () => ({ isReplModeEnabled: () => false }),
-)
-
-// MACRO globals
-;(globalThis as any).MACRO = {
-  VERSION: '2.1.888',
-  BUILD_TIME: '2026-04-22T00:00:00Z',
-  FEEDBACK_CHANNEL: '',
-  ISSUES_EXPLAINER: 'report issues on GitHub',
-  NATIVE_PACKAGE_URL: '',
-  PACKAGE_URL: '',
-  VERSION_CHANGELOG: '',
-}
-
-// --- Import and dump ---
 const { getSystemPrompt } = await import('src/constants/prompts.js')
 
-const tools = [
-  { name: 'Bash' },
-  { name: 'Read' },
-  { name: 'Edit' },
-  { name: 'Write' },
-  { name: 'Glob' },
-  { name: 'Grep' },
-  { name: 'Agent' },
-  { name: 'AskUserQuestion' },
-  { name: 'TaskCreate' },
-] as any
-
-const sections = await getSystemPrompt(tools, 'claude-opus-4-7')
+const model = process.argv[2] ?? 'claude-opus-5'
+const sections = await getSystemPrompt(SYSTEM_PROMPT_MOCK_TOOLS as never, model)
 const full = sections.join('\n\n')
 
 const outputPath = 'scripts/system-prompt-dump.txt'
 await Bun.write(outputPath, full)
+
 console.log(`Written to ${outputPath}`)
-console.log(
-  `Sections: ${sections.length} | Chars: ${full.length} | Lines: ${full.split('\n').length}`,
-)
+console.log(`Model: ${model}`)
+console.log(`Sections: ${sections.length}`)
+console.log(`Characters: ${full.length}`)
