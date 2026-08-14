@@ -6,6 +6,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const pkgPath = resolve(__dirname, '..', 'package.json')
 const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'))
 
+/** occ's own issue tracker. Kept in sync with PRODUCT_URL in src/constants/product.ts. */
+const ISSUES_URL = 'https://github.com/sweetcornna/open-claude-code/issues'
+
 /**
  * Shared MACRO define map used by both dev.ts (runtime -d flags)
  * and build.ts (Bun.build define option).
@@ -19,8 +22,14 @@ export function getMacroDefines(): Record<string, string> {
   return {
     'MACRO.VERSION': JSON.stringify(pkg.version),
     'MACRO.BUILD_TIME': JSON.stringify(new Date().toISOString()),
-    'MACRO.FEEDBACK_CHANNEL': JSON.stringify(''),
-    'MACRO.ISSUES_EXPLAINER': JSON.stringify(''),
+    // Both of these are interpolated into user-facing sentences that read as
+    // truncated when empty — the system prompt's "To give feedback, users
+    // should ${ISSUES_EXPLAINER}" and auth.ts's "post in ${FEEDBACK_CHANNEL}".
+    // They inherited Anthropic's empty defaults; occ has its own tracker.
+    'MACRO.FEEDBACK_CHANNEL': JSON.stringify(`${ISSUES_URL}`),
+    'MACRO.ISSUES_EXPLAINER': JSON.stringify(
+      `report the issue at ${ISSUES_URL}`,
+    ),
     'MACRO.NATIVE_PACKAGE_URL': JSON.stringify(''),
     'MACRO.PACKAGE_URL': JSON.stringify(pkg.name),
     'MACRO.VERSION_CHANGELOG': JSON.stringify(''),
