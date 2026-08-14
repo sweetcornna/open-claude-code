@@ -6,6 +6,13 @@ This is a translation of [`CHANGELOG.md`](CHANGELOG.md), which is the canonical
 source and the only one the tooling parses. Keep the structure identical:
 `## <semver> - <date>` headings, top-level `- ` entries, newest first.
 
+## 2.46.0 - 2026-08-14
+
+- **Non-Anthropic providers no longer receive Anthropic details they cannot use.** Whatever model a session ran on, the system prompt listed the Claude model ID for each tier plus entry points occ does not ship, such as the desktop and web apps. On OpenAI, Gemini, Grok or DeepSeek those IDs resolve to literals that always 404 — and the model would write them into your code. They are now sent only when the session actually serves that catalog.
+- **System prompt brought up to date with the latest upstream release.** New rules covering delivery discipline, self-correction and context management: the scope you asked for is no longer quietly narrowed or widened, wording that does not change the conclusion is no longer re-corrected repeatedly, and a long session no longer wraps up early just because the context limit is near. A batch of preachy instructions that second-guessed the model's own judgment was removed at the same time.
+- **Parallel subagents now show what each one owns.** Each row used to scroll whichever tool that subagent was calling at the moment, which made concurrent agents impossible to tell apart. The row now shows the objective given when the agent was dispatched, falling back to one extracted from the task description.
+- **Fixed two feedback pointers that rendered as half a sentence.** "To give feedback, users should " in the system prompt and "post in " in the workspace-trust warning were both missing their second half — two build-time constants had inherited empty upstream defaults. They now point at occ's own issue tracker.
+
 ## 2.45.1 - 2026-08-14
 
 - **Turn-limit truncation is no longer silent.** `max_turns_reached` was classified as non-rendering, yet it is the only entry in that table meaning "the harness cut the turn short" — the rest are model-facing reminders. Rendering it as null made "finished" and "truncated" indistinguishable in the transcript. The stop reason and how to raise the limit are now shown.
