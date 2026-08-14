@@ -1083,21 +1083,17 @@ export async function* runAgent({
 
       // Yield attachment messages (e.g., structured_output) without recording them
       if (message.type === 'attachment') {
-        // Handle max turns reached signal from query.ts
+        // max_turns_reached used to be swallowed here. That made a subagent
+        // truncated by `maxTurns:` frontmatter indistinguishable from one that
+        // finished: the parent model got a partial answer with no marker and
+        // the terminal check below allowlists 'max_turns'. Yield it through so
+        // finalizeAgentTool can tell the caller the run was cut short.
         if ((message as any).attachment.type === 'max_turns_reached') {
           logForDebugging(
-            `[Agent
-: $
-{
-  agentDefinition.agentType
-}
-] Reached max turns limit ($
-{
-  (message as any).attachment.maxTurns
-}
-)`,
+            `[Agent: ${agentDefinition.agentType}] Reached max turns limit (${
+              (message as any).attachment.maxTurns
+            })`,
           )
-          continue
         }
         yield message as Message
         continue

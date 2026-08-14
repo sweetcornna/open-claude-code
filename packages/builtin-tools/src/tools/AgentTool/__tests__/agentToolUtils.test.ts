@@ -56,9 +56,12 @@ const sdkProgressMock = setupSdkProgressMock({
 })
 afterAll(() => sdkProgressMock.reset())
 
-const { countToolUses, finalizeAgentTool, getLastToolUseName } = await import(
-  '../agentToolUtils'
-)
+const {
+  countToolUses,
+  finalizeAgentTool,
+  findMaxTurnsTruncation,
+  getLastToolUseName,
+} = await import('../agentToolUtils')
 
 function makeAssistantMessage(content: any[]): any {
   return { type: 'assistant', message: { content } }
@@ -66,6 +69,22 @@ function makeAssistantMessage(content: any[]): any {
 
 function makeUserMessage(text: string): any {
   return { type: 'user', message: { content: text } }
+}
+
+function makeMaxTurnsAttachment(maxTurns: number, turnCount: number): any {
+  return {
+    type: 'attachment',
+    attachment: { type: 'max_turns_reached', maxTurns, turnCount },
+  }
+}
+
+const FINALIZE_METADATA = {
+  prompt: 'test',
+  resolvedAgentModel: 'test-model',
+  isBuiltInAgent: false,
+  startTime: Date.now(),
+  agentType: 'test',
+  isAsync: false,
 }
 
 describe('countToolUses', () => {
@@ -115,16 +134,65 @@ describe('finalizeAgentTool', () => {
       finalizeAgentTool(
         [makeAssistantMessage([{ type: 'text', text: '   ' }])],
         'agent-empty',
-        {
-          prompt: 'test',
-          resolvedAgentModel: 'test-model',
-          isBuiltInAgent: false,
-          startTime: Date.now(),
-          agentType: 'test',
-          isAsync: false,
-        },
+        FINALIZE_METADATA,
       ),
     ).toThrow('Agent returned an empty response.')
+  })
+
+  // Regression: a subagent truncated by `maxTurns:` frontmatter used to return
+  // its partial answer with no marker at all — runAgent swallowed the
+  // max_turns_reached attachment and allowlisted the 'max_turns' terminal, so
+  // the parent model could not tell a cut-off run from a finished one.
+  test('marks the result as partial when the agent hit its turn limit', () => {
+    const result = finalizeAgentTool(
+      [
+        makeAssistantMessage([{ type: 'text', text: 'partial findings' }]),
+        makeMaxTurnsAttachment(12, 13),
+      ],
+      'agent-truncated',
+      FINALIZE_METADATA,
+    )
+    const texts = (result.content as any[]).map(b => b.text)
+    expect(texts[0]).toBe('partial findings')
+    expect(texts.at(-1)).toContain('12-turn limit')
+    expect(texts.at(-1)).toContain('turn 13')
+    expect(texts.at(-1)).toContain('incomplete')
+  })
+
+  test('leaves a normally completed agent result untouched', () => {
+    const result = finalizeAgentTool(
+      [makeAssistantMessage([{ type: 'text', text: 'all done' }])],
+      'agent-complete',
+      FINALIZE_METADATA,
+    )
+    expect((result.content as any[]).map(b => b.text)).toEqual(['all done'])
+  })
+})
+
+describe('findMaxTurnsTruncation', () => {
+  test('finds the attachment anywhere in the message list', () => {
+    expect(
+      findMaxTurnsTruncation([
+        makeMaxTurnsAttachment(3, 4),
+        makeAssistantMessage([{ type: 'text', text: 'x' }]),
+      ]),
+    ).toEqual({ maxTurns: 3, turnCount: 4 })
+  })
+
+  test('returns undefined when the agent ran to completion', () => {
+    expect(
+      findMaxTurnsTruncation([
+        makeAssistantMessage([{ type: 'text', text: 'x' }]),
+      ]),
+    ).toBeUndefined()
+  })
+
+  test('ignores unrelated attachments', () => {
+    expect(
+      findMaxTurnsTruncation([
+        { type: 'attachment', attachment: { type: 'todo_reminder' } } as any,
+      ]),
+    ).toBeUndefined()
   })
 })
 

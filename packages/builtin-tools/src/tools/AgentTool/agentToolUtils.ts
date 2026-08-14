@@ -283,6 +283,43 @@ function isNonEmptyTextBlock(
   return block.type === 'text' && block.text.trim().length > 0
 }
 
+/**
+ * The turn limit the agent loop stopped at, or undefined if it ran to
+ * completion. `maxTurns` comes from agent frontmatter (`maxTurns: N`) or the
+ * AgentTool caller; when it fires, query.ts emits this attachment and returns
+ * `{ reason: 'max_turns' }`, which runAgent treats as success. Without a
+ * marker on the result the parent model reads a truncated answer as a finished
+ * one — the same "it just stopped, nothing said" failure the user sees.
+ */
+export function findMaxTurnsTruncation(
+  agentMessages: MessageType[],
+): { maxTurns: number; turnCount: number } | undefined {
+  for (let i = agentMessages.length - 1; i >= 0; i--) {
+    const m = agentMessages[i]!
+    if (m.type !== 'attachment') continue
+    const attachment = m.attachment as
+      | { type?: string; maxTurns?: number; turnCount?: number }
+      | undefined
+    if (attachment?.type !== 'max_turns_reached') continue
+    return {
+      maxTurns: attachment.maxTurns ?? 0,
+      turnCount: attachment.turnCount ?? 0,
+    }
+  }
+  return undefined
+}
+
+export function formatMaxTurnsTruncationNotice(truncation: {
+  maxTurns: number
+  turnCount: number
+}): string {
+  return (
+    `[Agent stopped: reached its ${truncation.maxTurns}-turn limit at turn ` +
+    `${truncation.turnCount}. The work above is incomplete — the agent did not ` +
+    `decide it was done. Treat the result as partial.]`
+  )
+}
+
 export function finalizeAgentTool(
   agentMessages: MessageType[],
   agentId: string,
@@ -329,6 +366,17 @@ export function finalizeAgentTool(
   }
   if (content.length === 0) {
     throw new Error('Agent returned an empty response.')
+  }
+
+  const truncation = findMaxTurnsTruncation(agentMessages)
+  if (truncation) {
+    content = [
+      ...content,
+      {
+        type: 'text' as const,
+        text: formatMaxTurnsTruncationNotice(truncation),
+      },
+    ]
   }
 
   const totalTokens = getTokenCountFromUsage(

@@ -39,7 +39,10 @@ const NULL_RENDERING_TYPES = [
   'mcp_instructions_delta',
   'token_usage',
   'ultrathink_effort',
-  'max_turns_reached',
+  // NOT here on purpose: 'max_turns_reached' is the harness cutting the turn
+  // short, not a model-facing reminder. Rendering it as null is what makes a
+  // maxTurns stop indistinguishable from "the model decided it was done" —
+  // see AttachmentMessage's case for it.
   'task_reminder',
   'auto_mode',
   'auto_mode_exit',

@@ -389,6 +389,15 @@ export function AttachmentMessage({ attachment, addMargin, verbose, isTranscript
           {attachment.hookName} hook stopped continuation: {attachment.message}
         </Line>
       );
+    case 'max_turns_reached':
+      // The harness ended the turn, not the model. Without this line the user
+      // cannot tell a truncated run from a finished one.
+      return (
+        <Line color="warning">
+          Stopped after {attachment.turnCount} turns (limit {attachment.maxTurns}). Raise it with --max-turns or
+          CLAUDE_CODE_MAX_TURNS, then resume.
+        </Line>
+      );
     case 'hook_system_message':
       return (
         <Line>

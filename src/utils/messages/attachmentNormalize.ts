@@ -1000,6 +1000,11 @@ You have exited auto mode. The user may now want to interact more directly. You 
     case 'hook_system_message':
     case 'structured_output':
     case 'hook_permission_decision':
+    // Carries no model-facing text — the turn is already over by the time it
+    // is emitted. Listed explicitly (official parity) so it stops falling
+    // through to the "Unknown attachment type" logAntError below now that
+    // runAgent forwards it instead of swallowing it.
+    case 'max_turns_reached':
       return []
   }
 
