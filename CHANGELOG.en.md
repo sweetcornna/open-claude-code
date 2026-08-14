@@ -6,6 +6,12 @@ This is a translation of [`CHANGELOG.md`](CHANGELOG.md), which is the canonical
 source and the only one the tooling parses. Keep the structure identical:
 `## <semver> - <date>` headings, top-level `- ` entries, newest first.
 
+## 2.45.1 - 2026-08-14
+
+- **Turn-limit truncation is no longer silent.** `max_turns_reached` was classified as non-rendering, yet it is the only entry in that table meaning "the harness cut the turn short" — the rest are model-facing reminders. Rendering it as null made "finished" and "truncated" indistinguishable in the transcript. The stop reason and how to raise the limit are now shown.
+- **Subagent turn-limit truncation is reported to the parent.** The signal was previously swallowed, so the parent model received a partial result with no marker and could not tell completion from truncation. A notice is now appended to the result — appended rather than substituted, so the real answer is not displaced.
+- Investigating "sessions stopping midway" found no harness exit involved: across 430 real sessions there were zero `max_turns_reached` and zero `preventedContinuation` records, and the interactive path never passes `maxTurns`. Unfinished task lists mostly follow the model ending its turn without closing them out. No auto-continuation was added — `/goal` and autonomy flows already provide a bounded, interruptible one.
+
 ## 2.45.0 - 2026-08-14
 
 - **Fixed auto-compaction being disabled entirely since v2.42.0.** That release compiled REACTIVE_COMPACT into the default build, re-activating the branch in `shouldAutoCompact` that reads a remote experiment gate; the frozen first-party config on disk had it enabled, so every turn returned early. Both fallbacks failed with it: prompt-too-long detection recognised only Anthropic wording and missed third-party overflow errors, and the hard-block preempt was short-circuited by an always-true reactive flag. Detection is now centralised across providers (Anthropic, both OpenAI wires, Gemini, Grok, DeepSeek, OpenCode, Bedrock, Vertex, Foundry), transient network failures no longer count toward the compaction circuit breaker, and the preempt returns when that breaker latches open.

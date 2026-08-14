@@ -4,6 +4,12 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.45.1 - 2026-08-14
+
+- **轮次上限截断不再静默。** `max_turns_reached` 此前被归入不渲染类型，而它是该表内唯一表示"harness 截断了轮次"的条目，其余均为面向模型的提醒——渲染为 null 使"已完成"与"被截断"在界面上无从区分。现显示停止原因与提高上限的方式。
+- **子 agent 触及轮次上限时向父 agent 标注。** 此前该信号被直接吞掉，父模型收到部分结果却无任何标记，无法区分子 agent 完成与被截断。现在结果尾部追加一条标注（追加而非替换，避免顶掉真实答案）。
+- 调查"会话中途停止"的结论：430 份真实会话中 harness 出口未出现一次（`max_turns_reached` 与 `preventedContinuation` 记录均为 0，交互式亦不传 `maxTurns`），未完成任务多源于模型自行结束回合而未回头收尾任务清单。因此未新增自动续跑机制——`/goal` 与 autonomy flows 已提供有界且可中断的方案。
+
 ## 2.45.0 - 2026-08-14
 
 - **修复自动压缩自 v2.42.0 起整体失效。** 该版本将 REACTIVE_COMPACT 编入默认构建，使 `shouldAutoCompact` 中读取远端实验门的分支重新生效，而本地冻结的一方配置里该门为真，导致每轮提前返回。配套两道兜底同时失效：prompt-too-long 判定仅识别 Anthropic 措辞，认不出第三方端点的溢出提示；硬阻断预拦截被恒真的 reactive 开关短路。现改为跨 provider 的集中式溢出判定（覆盖 Anthropic、OpenAI 两条线、Gemini、Grok、DeepSeek、OpenCode、Bedrock、Vertex、Foundry），瞬时网络故障不再计入压缩熔断，熔断开闸时恢复预拦截。
