@@ -86,11 +86,13 @@ export const getGitStatus = memoize(async (): Promise<string | null> => {
       status_length: status.length,
     })
 
-    // Check if status exceeds character limit
+    // The limit is interpolated rather than spelled out: the literal used to
+    // say "2k characters" while MAX_STATUS_CHARS was 1000, so the model was
+    // told a cutoff twice the real one.
     const truncatedStatus =
       status.length > MAX_STATUS_CHARS
         ? status.substring(0, MAX_STATUS_CHARS) +
-          '\n... (truncated because it exceeds 2k characters. If you need more information, run "git status" using BashTool)'
+          `\n... (truncated because it exceeds ${MAX_STATUS_CHARS} characters. If you need more information, run "git status" using BashTool)`
         : status
 
     logForDiagnosticsNoPII('info', 'git_status_completed', {
