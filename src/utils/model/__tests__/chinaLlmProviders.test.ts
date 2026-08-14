@@ -97,3 +97,18 @@ test('getChinaProviderContextWindow resolves per model, not per provider', () =>
   expect(getChinaProviderContextWindow('gpt-5.5')).toBeUndefined()
   expect(getChinaProviderContextWindow('')).toBeUndefined()
 })
+
+test('getChinaProviderContextWindow sees gateway spellings of the same checkpoint', () => {
+  // Aggregators re-spell the checkpoint two ways, and strict equality saw
+  // neither: both used to fall through to the flat 200k fallback.
+  expect(getChinaProviderContextWindow('zhipu/glm-4.7')).toBe(205_000)
+  expect(getChinaProviderContextWindow('z-ai/glm-4.7:exacto')).toBe(205_000)
+  expect(getChinaProviderContextWindow('glm-4.7:free')).toBe(205_000)
+  expect(getChinaProviderContextWindow('openrouter/zhipu/glm-4.7-flash')).toBe(
+    203_000,
+  )
+  // Still not a prefix match: these are different checkpoints with different
+  // windows, and guessing between them is how a 1M window lands on a 128k model.
+  expect(getChinaProviderContextWindow('glm-4.7-air')).toBeUndefined()
+  expect(getChinaProviderContextWindow('glm-4')).toBeUndefined()
+})

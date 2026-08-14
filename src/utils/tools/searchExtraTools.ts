@@ -24,6 +24,7 @@ import {
   SEARCH_EXTRA_TOOLS_TOOL_NAME,
 } from '@open-claude-code/builtin-tools/tools/SearchExtraToolsTool/prompt.js'
 import {
+  DEFERRED_DELTA_LIST_CAP,
   isDeferredToolsDeltaEnabled,
   shouldAppendEphemeralDeferredToolList,
 } from '@open-claude-code/builtin-tools/tools/SearchExtraToolsTool/deferredToolsDelta.js'
@@ -617,20 +618,34 @@ export type DeferredToolsDelta = {
   /** Rendered lines for addedNames; the scan reconstructs from names. */
   addedLines: string[]
   removedNames: string[]
+  /**
+   * Names whose description line was already spelled out earlier in this
+   * conversation and whose tools have come back (MCP reconnect). Re-listing
+   * the full line would be pure cache churn, so these are announced by name.
+   */
+  readdedNames?: string[]
+  pendingMcpServers?: string[]
+  needsAuthMcpServers?: string[]
+  failedMcpServers?: { name: string; error?: string }[]
 }
 
 /**
- * Cap on how many names one announcement spells out. A 300-tool MCP setup
- * would otherwise emit a 300-line system-reminder on the first turn.
+ * MCP connection state, as far as the deferred-tool announcement cares.
  *
- * Only `addedLines` (the rendered view) is truncated — `addedNames` stays
- * complete because it is the bookkeeping the next scan diffs against, and
- * dropping entries from it would re-announce the same tools every turn. The
- * consequence is real but bounded: tools past the cap are never spelled out,
- * so the model reaches them through keyword/`discover:` search instead of
- * `select:`. The renderer says so explicitly.
+ * Each field is independently optional and `undefined` means "this axis is not
+ * being reported" — NOT "the list is empty". The difference is load-bearing:
+ * a defined-but-empty list is a change worth announcing (the servers finished
+ * connecting), while an absent one must not clear what a previous delta said.
  */
-export const DEFERRED_DELTA_LIST_CAP = 30
+export type DeferredToolsMcpState = {
+  pending?: string[]
+  needsAuth?: string[]
+  failed?: { name: string; error?: string }[]
+}
+
+// Re-exported so existing importers keep working; the constant itself lives
+// in the zero-import leaf shared with the renderer.
+export { DEFERRED_DELTA_LIST_CAP }
 
 /**
  * Call-site discriminator for the tengu_deferred_tools_pool_change event.
@@ -683,8 +698,18 @@ export function getDeferredToolsDelta(
   tools: Tools,
   messages: Message[],
   scanContext?: DeferredToolsDeltaScanContext,
+  mcpState?: DeferredToolsMcpState,
 ): DeferredToolsDelta | null {
+  // Two sets, not one. `announced` answers "does the model know this name
+  // exists"; `lined` answers "has its description line already been written
+  // out". They diverge when a server disconnects and reconnects: the name
+  // leaves `announced` (it was reported removed) but its line is still sitting
+  // in the transcript, so re-announcing it should cost a name, not a line.
   const announced = new Set<string>()
+  const lined = new Set<string>()
+  let lastPending: string[] = []
+  let lastNeedsAuth: string[] = []
+  let lastFailed: { name: string; error?: string }[] = []
   let attachmentCount = 0
   let dtdCount = 0
   const attachmentTypesSeen = new Set<string>()
@@ -692,10 +717,28 @@ export function getDeferredToolsDelta(
     if (msg.type !== 'attachment') continue
     attachmentCount++
     attachmentTypesSeen.add(msg.attachment!.type)
-    if (msg.attachment!.type !== 'deferred_tools_delta') continue
+    const delta = msg.attachment! as {
+      type: string
+    } & Partial<DeferredToolsDelta>
+    if (delta.type !== 'deferred_tools_delta') continue
     dtdCount++
-    for (const n of msg.attachment!.addedNames) announced.add(n)
-    for (const n of msg.attachment!.removedNames) announced.delete(n)
+    const readded = new Set<string>(delta.readdedNames ?? [])
+    for (const n of delta.addedNames ?? []) {
+      announced.add(n)
+      if (!readded.has(n)) lined.add(n)
+    }
+    for (const n of delta.removedNames ?? []) announced.delete(n)
+    // Last-writer-wins: each delta carries the full list for the axes it
+    // reports, so the newest one is the state the model currently believes.
+    if (Array.isArray(delta.pendingMcpServers)) {
+      lastPending = delta.pendingMcpServers
+    }
+    if (Array.isArray(delta.needsAuthMcpServers)) {
+      lastNeedsAuth = delta.needsAuthMcpServers
+    }
+    if (Array.isArray(delta.failedMcpServers)) {
+      lastFailed = delta.failedMcpServers
+    }
   }
 
   const deferred: Tool[] = tools.filter(isDeferredTool)
@@ -703,6 +746,11 @@ export function getDeferredToolsDelta(
   const poolNames = new Set(tools.map(t => t.name))
 
   const added = deferred.filter(t => !announced.has(t.name))
+  const needLines = deferred.filter(t => !lined.has(t.name))
+  const readdedNames = added
+    .filter(t => lined.has(t.name))
+    .map(t => t.name)
+    .sort()
   const removed: string[] = []
   for (const n of announced) {
     if (deferredNames.has(n)) continue
@@ -710,7 +758,28 @@ export function getDeferredToolsDelta(
     // else: undeferred — silent
   }
 
-  if (added.length === 0 && removed.length === 0) return null
+  const pending = mcpState?.pending && [...mcpState.pending].sort()
+  const pendingChanged =
+    pending !== undefined && !sameStrings(pending, lastPending)
+  const needsAuth = mcpState?.needsAuth && [...mcpState.needsAuth].sort()
+  const needsAuthChanged =
+    needsAuth !== undefined && !sameStrings(needsAuth, lastNeedsAuth)
+  const failed =
+    mcpState?.failed &&
+    [...mcpState.failed].sort((a, b) => a.name.localeCompare(b.name))
+  const failedChanged =
+    failed !== undefined && !sameFailures(failed, lastFailed)
+
+  if (
+    added.length === 0 &&
+    needLines.length === 0 &&
+    removed.length === 0 &&
+    !pendingChanged &&
+    !needsAuthChanged &&
+    !failedChanged
+  ) {
+    return null
+  }
 
   // Diagnostic for the inc-4747 scan-finds-nothing bug. Round-1 fields
   // (messagesLength/attachmentCount/dtdCount from #23167) showed 45.6% of
@@ -720,7 +789,18 @@ export function getDeferredToolsDelta(
   // buckets so the real main-thread cross-turn failure is isolable in BQ.
   logEvent('tengu_deferred_tools_pool_change', {
     addedCount: added.length,
+    readdedCount: readdedNames.length,
+    unlistedCount: needLines.length,
     removedCount: removed.length,
+    pendingChanged,
+    pendingCount: pending?.length ?? 0,
+    lastPendingCount: lastPending.length,
+    needsAuthChanged,
+    needsAuthCount: needsAuth?.length ?? 0,
+    lastNeedsAuthCount: lastNeedsAuth.length,
+    failedChanged,
+    failedCount: failed?.length ?? 0,
+    lastFailedCount: lastFailed.length,
     priorAnnouncedCount: announced.size,
     messagesLength: messages.length,
     attachmentCount,
@@ -734,14 +814,39 @@ export function getDeferredToolsDelta(
       .join(',') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   })
 
+  // `addedNames` must cover both halves: names the model has never seen AND
+  // names whose line is being written now. It is the bookkeeping the next scan
+  // diffs against, so a name dropped from here gets re-announced every turn.
+  const addedNames = [
+    ...new Set([...added, ...needLines].map(t => t.name)),
+  ].sort()
+
   return {
-    addedNames: added.map(t => t.name).sort(),
-    addedLines: added
+    addedNames,
+    addedLines: needLines
       .map(formatDeferredToolLine)
       .sort()
       .slice(0, DEFERRED_DELTA_LIST_CAP),
     removedNames: removed.sort(),
+    ...(readdedNames.length > 0 && { readdedNames }),
+    ...(pending !== undefined && { pendingMcpServers: pending }),
+    ...(needsAuth !== undefined && { needsAuthMcpServers: needsAuth }),
+    ...(failed !== undefined && { failedMcpServers: failed }),
   }
+}
+
+function sameStrings(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i])
+}
+
+function sameFailures(
+  a: { name: string; error?: string }[],
+  b: { name: string; error?: string }[],
+): boolean {
+  return (
+    a.length === b.length &&
+    a.every((v, i) => v.name === b[i]?.name && v.error === b[i]?.error)
+  )
 }
 
 /**

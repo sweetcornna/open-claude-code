@@ -35,8 +35,12 @@ import {
   statusListeners,
   type ClaudeAILimits,
 } from 'src/services/claudeAiLimits.js'
-import { getSessionId } from 'src/bootstrap/state.js'
-import { randomUUID } from 'crypto'
+import {
+  getSessionId,
+  isSessionPersistenceDisabled,
+} from 'src/bootstrap/state.js'
+import { saveResumeAnchor } from 'src/utils/sessionStorage.js'
+import { randomUUID, type UUID } from 'crypto'
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
 import type { AppState } from 'src/state/AppStateStore.js'
 import { skillChangeDetector } from '../../utils/skills/skillChangeDetector.js'
@@ -193,6 +197,31 @@ export function runHeadlessStreaming(
     logForDebugging(
       `[print.ts] Auto-resuming interrupted turn (kind: ${turnInterruptionState.kind})`,
     )
+
+    // Record the tail this offer was made against BEFORE running it. If this
+    // process dies before writing a single message — the gateway-restart loop
+    // this whole path exists for — the transcript still ends on that same
+    // message, and the next resume would inject the identical continuation
+    // again. With the anchor on disk it recognises the replay and declines.
+    // A run that does produce output moves the tail past the anchor, so the
+    // entry stops matching without needing to be cleared.
+    if (
+      turnInterruptionState.resumeAnchorUuid &&
+      !isSessionPersistenceDisabled()
+    ) {
+      try {
+        saveResumeAnchor(
+          getSessionId() as UUID,
+          turnInterruptionState.resumeAnchorUuid as UUID,
+        )
+      } catch (error) {
+        // Best-effort: a transcript we cannot append to must not stop the
+        // continuation the caller asked for.
+        logForDebugging(
+          `[print.ts] Failed to persist resume anchor: ${String(error)}`,
+        )
+      }
+    }
 
     // Remove the interrupted message and its sentinel, then re-enqueue so
     // the model sees it exactly once. For mid-turn interruptions, the

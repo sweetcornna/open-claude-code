@@ -8,14 +8,15 @@
  * and neither knew that a sensible default depends on which provider is behind
  * the alias.
  *
- * | family              | effort | context |
- * | ------------------- | ------ | ------- |
- * | DeepSeek            | max    | 1M      |
- * | GPT                 | xhigh  | 272k    |
- * | Gemini / Grok       | high   | 200k    |
- * | Claude opus/fable   | xhigh  | 1M      |
- * | Claude sonnet/haiku | xhigh  | 200k    |
- * | anything else       | xhigh  | 200k    |
+ * | family              | effort | context               |
+ * | ------------------- | ------ | --------------------- |
+ * | DeepSeek            | max    | 1M                    |
+ * | GPT                 | xhigh  | 272k                  |
+ * | Gemini              | high   | 1M for known text ids |
+ * | Grok                | high   | per generation        |
+ * | Claude opus/fable   | xhigh  | 1M                    |
+ * | Claude sonnet/haiku | xhigh  | 200k                  |
+ * | anything else       | xhigh  | 200k                  |
  *
  * Claude sonnet and haiku take the same effort as opus — the tier difference is
  * about the window, which is a capability, not about how hard to think, which
@@ -27,6 +28,13 @@
  * as the identity — the value that reproduces what the provider did before occ
  * started steering it — so an existing session is byte-identical until its user
  * picks something else.
+ *
+ * That argument is about EFFORT only. It was applied to the context axis by
+ * accident, and a flat 200k there is not an identity — it is wrong by 5× for
+ * Gemini and by up to 5× for Grok, so every session of theirs auto-compacted at
+ * roughly 15% of the capacity it had paid for. The two axes are now decided
+ * separately; see the tables below for what each window is and how sure we are
+ * of it.
  *
  * Two hard limits are applied by the callers, not here:
  *   - effort is only ever SENT when `modelSupportsEffort(model)` is true, so a
@@ -56,7 +64,9 @@ type ProviderFamily =
   | 'other'
 
 export const CONTEXT_200K = 200_000
+export const CONTEXT_256K = 256_000
 export const CONTEXT_272K = 272_000
+export const CONTEXT_500K = 500_000
 export const CONTEXT_1M = 1_000_000
 
 export type TierDefaults = {
@@ -106,6 +116,78 @@ export function getProviderFamily(model: string): ProviderFamily {
 }
 
 /**
+ * Every generative Gemini text model since 1.5 publishes the same 1,048,576
+ * input-token limit — 2.0 Flash, 2.5 Pro/Flash/Flash-Lite, the whole 3.x line.
+ * It is the one family where a version-prefixed rule is safer than a list: the
+ * list goes stale (Google retired 3-pro-preview and 2.0-flash within six months
+ * of shipping them) while the number has not moved in four generations.
+ *
+ * The exceptions are all spelled out in the id. Embedding models are 2k–8k and
+ * image models are 64k–128k, and neither is something occ can drive a session
+ * with — but a `gemini-` prefix rule that swallowed them would hand a 1M window
+ * to a 2k model, which is the failure this whole change exists to prevent.
+ *
+ * 1M and not 1,048,576: undershooting a window costs a slightly early compact,
+ * overshooting costs a hard prompt-too-long, and the round number is what the
+ * `/model` ladder and `/model-settings` render.
+ */
+const GEMINI_VERSIONED_ID = /^gemini-\d/
+const GEMINI_SMALL_WINDOW_ID = /embedding|image|imagen|veo|tts|native-audio/
+
+/**
+ * Grok, per generation, from docs.x.ai.
+ *
+ * No prefix rule here: unlike Gemini, xAI's windows genuinely differ between
+ * live models (256k for the coding line, 500k for 4.5/4.6, 1M for 4.20/4.3), so
+ * a family-wide guess would be wrong for most of them in one direction or the
+ * other. An unmatched `grok-*` id therefore keeps the 200k fallback rather than
+ * inheriting a sibling's number.
+ *
+ * Two deliberate imprecisions, both in the safe direction. The direction is not
+ * a matter of taste: overestimating a window means the upstream rejects the
+ * request outright, while underestimating it means compacting sooner than
+ * necessary — wasteful but working. The costs are not symmetric, so anything
+ * that cannot be confirmed from a primary source resolves toward "still works".
+ *   - grok-4-fast / grok-4.1-fast documented 2M, but were retired on
+ *     2026-05-15 and now redirect to grok-4.3, so they get grok-4.3's 1M.
+ *   - grok-3 / grok-3-mini are commonly cited at 131k, but xAI's pages for them
+ *     are gone, so the number cannot be confirmed first-hand. They are left off
+ *     the table entirely and keep the 200k fallback rather than being pinned to
+ *     something unverifiable — and since these ids redirect too, the real
+ *     behaviour is not this table's to decide anyway.
+ *
+ * Also unresolved: xAI publishes one "context window" figure without saying
+ * whether it is input-only or input+output. These are used as occ's input
+ * budget, which is the conservative reading — and occ subtracts reserved output
+ * tokens from it on top (see getEffectiveContextWindowSize).
+ *
+ * Order matters: first match wins, so the specific generations precede the
+ * `grok-4` catch-all.
+ */
+const GROK_CONTEXT_WINDOWS: ReadonlyArray<readonly [RegExp, number]> = [
+  // grok-build-0.1, aliased as grok-code-fast / grok-code-fast-1[-0825].
+  [/^grok-(?:build|code-fast)/, CONTEXT_256K],
+  [/^grok-4\.[56](?:\D|$)/, CONTEXT_500K],
+  [/^grok-4\.(?:20|3)(?:\D|$)/, CONTEXT_1M],
+  [/^grok-4(?:\.1)?-(?:1-)?fast/, CONTEXT_1M],
+  // grok-4 / grok-4-0709.
+  [/^grok-4(?:-|$)/, CONTEXT_256K],
+]
+
+function getGeminiContextWindow(lower: string): number {
+  if (!GEMINI_VERSIONED_ID.test(lower)) return CONTEXT_200K
+  if (GEMINI_SMALL_WINDOW_ID.test(lower)) return CONTEXT_200K
+  return CONTEXT_1M
+}
+
+function getGrokContextWindow(lower: string): number {
+  for (const [pattern, window] of GROK_CONTEXT_WINDOWS) {
+    if (pattern.test(lower)) return window
+  }
+  return CONTEXT_200K
+}
+
+/**
  * The factory defaults for a model, before any user configuration or env
  * override is applied.
  */
@@ -120,8 +202,15 @@ export function getTierDefaults(
     case 'gpt':
       return { effort: 'xhigh', contextTokens: CONTEXT_272K }
     case 'gemini':
+      return {
+        effort: 'high',
+        contextTokens: getGeminiContextWindow(model.toLowerCase()),
+      }
     case 'grok':
-      return { effort: 'high', contextTokens: CONTEXT_200K }
+      return {
+        effort: 'high',
+        contextTokens: getGrokContextWindow(model.toLowerCase()),
+      }
     case 'claude': {
       // The tier argument wins when the caller knows which alias was asked
       // for; otherwise sniff the id. Sonnet and Haiku do not get the 1M

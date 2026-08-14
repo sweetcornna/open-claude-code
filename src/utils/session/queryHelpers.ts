@@ -10,6 +10,7 @@ import { findToolByName, type Tool, type Tools } from '../../Tool.js'
 import { BASH_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/BashTool/toolName.js'
 import { FILE_EDIT_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/FileEditTool/constants.js'
 import type { Input as FileReadInput } from '@open-claude-code/builtin-tools/tools/FileReadTool/FileReadTool.js'
+import { TRUNCATED_PARTIAL_VIEW_PREFIX } from '@open-claude-code/builtin-tools/tools/FileReadTool/constants.js'
 import {
   FILE_READ_TOOL_NAME,
   FILE_UNCHANGED_STUB,
@@ -461,6 +462,21 @@ export function extractReadFilesFromMessages(
     }
   }
 
+  // tool_use_ids whose Read was cut to a partial first page by the token cap,
+  // as announced by a live `read_truncation_notice` attachment. Present in a
+  // running session; gone from a resumed transcript, which is why the durable
+  // `toolUseResult.file.truncatedByTokenCap` flag is checked as well below.
+  const truncatedToolUseIds = new Set<string>()
+  for (const message of messages) {
+    if (
+      message.type === 'attachment' &&
+      message.attachment?.type === 'read_truncation_notice' &&
+      message.attachment.toolUseID !== undefined
+    ) {
+      truncatedToolUseIds.add(message.attachment.toolUseID)
+    }
+  }
+
   // Second pass: find corresponding tool results and extract content
   for (const message of messages) {
     if (message.type === 'user' && Array.isArray(message.message!.content)) {
@@ -490,6 +506,31 @@ export function extractReadFilesFromMessages(
               .join('\n')
               .trim()
 
+            // A Read the token cap cut to page 1 leaves an entry the model has
+            // only partly seen. In-session, FileReadTool marks that entry
+            // `isPartialView` and Edit/Write refuse to touch it until there is
+            // a real Read; without this the guard silently evaporates the
+            // moment the session is resumed, and the model edits a file it has
+            // only seen the first page of. Narrow by construction: it applies
+            // to truncated reads only, so an ordinary resume-then-edit is
+            // unaffected.
+            //
+            // Three signals, because which ones survive depends on the era of
+            // the transcript: the durable output flag, the live attachment,
+            // and the banner reconstructed onto the tool_result itself.
+            const isPartialView =
+              (
+                message as {
+                  toolUseResult?: {
+                    file?: { truncatedByTokenCap?: unknown }
+                  }
+                }
+              ).toolUseResult?.file?.truncatedByTokenCap === true ||
+              truncatedToolUseIds.has(content.tool_use_id) ||
+              content.content.startsWith(
+                `<system-reminder>${TRUNCATED_PARTIAL_VIEW_PREFIX}`,
+              )
+
             // Cache the file content with the message timestamp
             if (message.timestamp) {
               const timestamp = new Date(
@@ -500,6 +541,7 @@ export function extractReadFilesFromMessages(
                 timestamp,
                 offset: undefined,
                 limit: undefined,
+                ...(isPartialView && { isPartialView: true }),
               })
             }
           }

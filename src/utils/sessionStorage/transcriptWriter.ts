@@ -1028,6 +1028,9 @@ export class Project {
       void this.enqueueWrite(sessionFile, entry)
     } else if (entry.type === 'goal-cleared') {
       void this.enqueueWrite(sessionFile, entry)
+    } else if (entry.type === 'resume-anchor') {
+      // Resume anchors can always be appended; the newest one wins on read.
+      void this.enqueueWrite(sessionFile, entry)
     } else {
       const messageSet = await getSessionMessages(sessionId)
       if (entry.type === 'queue-operation') {

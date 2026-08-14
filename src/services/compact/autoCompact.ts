@@ -18,6 +18,7 @@ import { logError } from '../../utils/telemetry/log.js'
 import { tokenCountWithEstimation } from '../../utils/session/tokens.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
 import { getMaxOutputTokensForModel } from '../api/claude.js'
+import { isRetryableAPIError } from '../api/retryClassification.js'
 import { notifyCompaction } from '../api/promptCacheBreakDetection.js'
 import { setLastSummarizedMessageId } from '../SessionMemory/sessionMemoryUtils.js'
 import {
@@ -124,6 +125,24 @@ export function estimateMaxTurnGrowth(model: string): number {
 // BQ 2026-03-10: 1,279 sessions had 50+ consecutive failures (up to 3,272)
 // in a single session, wasting ~250K API calls/day globally.
 const MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES = 3
+
+/**
+ * Has the breaker latched open, i.e. will `autoCompactIfNeeded` decline every
+ * further attempt this turn?
+ *
+ * The query loop skips its blocking-limit preempt on the promise that
+ * automatic compaction will keep the context in bounds. Once the breaker is
+ * open that promise is void, so the preempt has to come back — otherwise the
+ * turn keeps sending ever-larger prompts with nothing left to catch them.
+ */
+export function isAutoCompactCircuitOpen(
+  tracking: AutoCompactTrackingState | undefined,
+): boolean {
+  return (
+    tracking?.consecutiveFailures !== undefined &&
+    tracking.consecutiveFailures >= MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES
+  )
+}
 
 export function getAutoCompactThreshold(
   model: string,
@@ -287,10 +306,7 @@ export async function autoCompactIfNeeded(
   // Circuit breaker: stop retrying after N consecutive failures.
   // Without this, sessions where context is irrecoverably over the limit
   // hammer the API with doomed compaction attempts on every turn.
-  if (
-    tracking?.consecutiveFailures !== undefined &&
-    tracking.consecutiveFailures >= MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES
-  ) {
+  if (isAutoCompactCircuitOpen(tracking)) {
     return { wasCompacted: false }
   }
 
@@ -368,8 +384,25 @@ export async function autoCompactIfNeeded(
       consecutiveFailures: 0,
     }
   } catch (error) {
-    if (!hasExactErrorMessage(error, ERROR_MESSAGE_USER_ABORT)) {
+    const isUserAbort = hasExactErrorMessage(error, ERROR_MESSAGE_USER_ABORT)
+    if (!isUserAbort) {
       logError(error)
+    }
+    // The breaker is for one thing: a context that is irrecoverably over the
+    // limit, so every future attempt is doomed and hammers the API. A dropped
+    // socket, a 5xx, a stream timeout, or the user pressing esc says nothing
+    // about that — and counting them is a one-way door, because the ONLY
+    // reset is a successful compaction and an open breaker returns before it
+    // can ever attempt one. Three flaky seconds would then disable automatic
+    // compaction for the rest of the turn.
+    //
+    // Reporting no failure count (rather than the unchanged one) leaves the
+    // caller's tracking untouched — see recordCompactionFailure in query.ts.
+    if (isUserAbort || isRetryableAPIError(error)) {
+      logForDebugging(
+        `autocompact: compaction failed transiently (${isUserAbort ? 'user abort' : 'retryable API error'}) — not counting toward the circuit breaker`,
+      )
+      return { wasCompacted: false }
     }
     // Increment consecutive failure count for circuit breaker.
     // The caller threads this through autoCompactTracking so the

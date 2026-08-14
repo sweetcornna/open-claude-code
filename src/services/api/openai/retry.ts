@@ -257,6 +257,15 @@ export async function retryAPIRequest<T>(
         continue
       }
       const verdict = classifyRetryableAPIError(error)
+      // Deliberately does NOT consult `replayable`, and that is not an
+      // oversight — see "retries the reported stream_read_error even with
+      // legacy replayable=no metadata" in retry.test.ts. The operations this
+      // ladder re-runs rebuild their buffer from scratch, and the one that
+      // streams (fetchResponsesStream's `attempt`) stops reading at the exact
+      // predicate the stamp is taken from (closesRetryWindow), so a stamped
+      // error is thrown past this ladder rather than into it. Exactly-once
+      // delivery is enforced by that barrier; the flag is honoured where output
+      // has actually left — streamAssembly.ts's retryThirdPartyEventStream.
       if (
         options.signal.aborted ||
         !verdict.retryable ||

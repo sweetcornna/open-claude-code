@@ -367,6 +367,7 @@ export async function loadFullLog(log: LogOption): Promise<LogOption> {
       modes,
       worktreeStates,
       goals,
+      resumeAnchors,
       fileHistorySnapshots,
       attributionSnapshots,
       contentReplacements,
@@ -418,6 +419,9 @@ export async function loadFullLog(log: LogOption): Promise<LogOption> {
           ? worktreeStates.get(sessionId)
           : log.worktreeSession,
       goal: sessionId ? goals.get(sessionId) : log.goal,
+      resumeAnchorUuid: sessionId
+        ? resumeAnchors.get(sessionId)
+        : log.resumeAnchorUuid,
       prNumber: sessionId ? prNumbers.get(sessionId) : log.prNumber,
       prUrl: sessionId ? prUrls.get(sessionId) : log.prUrl,
       prRepository: sessionId
@@ -471,6 +475,7 @@ export async function getLastSessionLog(
     attributionSnapshots,
     contentReplacements,
     goals,
+    resumeAnchors,
   } = await loadSessionFile(sessionId)
   if (messages.size === 0) return null
   // Prime getSessionMessages cache so recordTranscript (called after REPL
@@ -509,5 +514,6 @@ export async function getLastSessionLog(
     ),
     worktreeSession: worktreeStates.get(sessionId),
     goal: goals.get(sessionId),
+    resumeAnchorUuid: resumeAnchors.get(sessionId),
   }
 }

@@ -207,6 +207,10 @@ export async function getAttachments(
               : 'attachments_subagent',
             querySource,
           },
+          // Servers that are still connecting / need OAuth / failed have no
+          // tools in the pool, so without this the model reads their absence
+          // as "capability does not exist" and stops looking.
+          toolUseContext.options.mcpClients,
         ),
       ),
     ),

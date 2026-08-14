@@ -95,6 +95,7 @@ const EXPECTED_EXPORTS = [
   'saveCustomTitle',
   'saveGoal',
   'saveMode',
+  'saveResumeAnchor',
   'saveTag',
   'saveTaskSummary',
   'saveWorktreeState',
@@ -118,8 +119,8 @@ describe('sessionStorage.ts export surface', () => {
   // Literal count on purpose: asserting against EXPECTED_EXPORTS.length would
   // be a tautology after the toEqual above, and would still pass if the array
   // itself were bulk-edited.
-  test('exports 92 runtime symbols', () => {
-    expect(Object.keys(MODULE)).toHaveLength(92)
+  test('exports 93 runtime symbols', () => {
+    expect(Object.keys(MODULE)).toHaveLength(93)
   })
 
   test('every exported symbol is defined', () => {

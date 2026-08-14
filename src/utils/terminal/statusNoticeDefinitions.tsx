@@ -15,6 +15,9 @@ import {
 } from '../auth/auth.js';
 import type { AgentDefinitionsResult } from '@open-claude-code/builtin-tools/tools/AgentTool/loadAgentsDir.js';
 import { getAgentDescriptionsTotalTokens, AGENT_DESCRIPTIONS_THRESHOLD } from './statusNoticeHelpers.js';
+import { getContextWindowNotice } from './contextWindowNotice.js';
+import { formatContextTokens } from '../model/tierSettings.js';
+import { modelSupports1M } from '../session/context.js';
 import { isSupportedJetBrainsTerminal, toIDEDisplayName, getTerminalIdeType } from './ide.js';
 import { isJetBrainsPluginInstalledCachedSync } from './jetbrains.js';
 
@@ -184,6 +187,68 @@ const largeAgentDescriptionsNotice: StatusNoticeDefinition = {
   },
 };
 
+/**
+ * The configured context window is not the one this session will get.
+ *
+ * `modelSettings.<tier>.contextTokens` is occ's own knob and it accepts numbers
+ * the endpoint will not serve. The clamp that fixes the accounting is silent by
+ * construction, and a window that quietly drops from 372k to 200k is
+ * indistinguishable from occ ignoring the setting — so it is said out loud,
+ * once, at startup, with the two ways out.
+ */
+const contextWindowCappedNotice: StatusNoticeDefinition = {
+  id: 'context-window-capped',
+  type: 'warning',
+  isActive: () => getContextWindowNotice()?.kind === 'capped',
+  render: () => {
+    const notice = getContextWindowNotice();
+    if (notice?.kind !== 'capped') return null;
+    // Anything strictly between 200k and 1M is unreachable on every Anthropic
+    // model, so the 1M advice is only useful where 1M is actually available.
+    const remedy = modelSupports1M(notice.model)
+      ? `use ${formatContextTokens(1_000_000)} for the 1M opt-in, or lower it to ${formatContextTokens(notice.window)}`
+      : `lower it to ${formatContextTokens(notice.window)}`;
+    return (
+      <Box flexDirection="row" marginTop={1}>
+        <Text color="warning">{figures.warning}</Text>
+        <Text color="warning">
+          Context window capped to {formatContextTokens(notice.window)} — {notice.model} cannot serve the{' '}
+          {formatContextTokens(notice.configured)} configured for it. To change it, {remedy}
+          <Text dimColor> · /model-settings</Text>
+        </Text>
+      </Box>
+    );
+  },
+};
+
+/**
+ * occ has no idea how big this model's window is and is guessing.
+ *
+ * Only fires when nothing has answered the question: an env override or a
+ * per-tier setting both win outright and silence this. The number occ picked is
+ * stated rather than hidden, because the failure it precedes — auto-compact
+ * never firing before a hard prompt-too-long — reads as a model bug otherwise.
+ */
+const assumedContextWindowNotice: StatusNoticeDefinition = {
+  id: 'assumed-context-window',
+  type: 'warning',
+  isActive: () => getContextWindowNotice()?.kind === 'assumed',
+  render: () => {
+    const notice = getContextWindowNotice();
+    if (notice?.kind !== 'assumed') return null;
+    return (
+      <Box flexDirection="row" marginTop={1}>
+        <Text color="warning">{figures.warning}</Text>
+        <Text color="warning">
+          occ does not recognize <Text bold>{notice.model}</Text>, so it assumes a {formatContextTokens(200_000)}{' '}
+          context window. If the real one differs, set CLAUDE_CODE_MAX_CONTEXT_TOKENS
+          <Text dimColor> · /model-settings</Text>
+        </Text>
+      </Box>
+    );
+  },
+};
+
 const jetbrainsPluginNotice: StatusNoticeDefinition = {
   id: 'jetbrains-plugin-install',
   type: 'info',
@@ -220,6 +285,8 @@ const jetbrainsPluginNotice: StatusNoticeDefinition = {
 export const statusNoticeDefinitions: StatusNoticeDefinition[] = [
   largeMemoryFilesNotice,
   largeAgentDescriptionsNotice,
+  contextWindowCappedNotice,
+  assumedContextWindowNotice,
   claudeAiSubscriberExternalTokenNotice,
   apiKeyConflictNotice,
   bothAuthMethodsNotice,

@@ -24,6 +24,10 @@ import {
   copyFileHistoryForResume,
   type FileHistorySnapshot,
 } from '../filesystem/fileHistory.js'
+import {
+  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+  logEvent,
+} from '../../services/analytics/index.js'
 import { logError } from '../telemetry/log.js'
 import {
   createAssistantMessage,
@@ -360,7 +364,22 @@ export type TeleportRemoteResponse = {
 
 export type TurnInterruptionState =
   | { kind: 'none' }
-  | { kind: 'interrupted_prompt'; message: NormalizedUserMessage }
+  | {
+      kind: 'interrupted_prompt'
+      message: NormalizedUserMessage
+      /**
+       * The transcript tail this offer was made against — the uuid the NEXT
+       * resume compares against to notice it is being asked to replay the same
+       * turn. Whoever acts on the offer persists it (see `saveResumeAnchor`).
+       *
+       * Carried on the state rather than as a separate return value because
+       * only an offer has one, and it must be the tail as it stood BEFORE the
+       * synthetic continuation was appended — recomputing it downstream, after
+       * the continuation and sentinel are in the array, would name the wrong
+       * message.
+       */
+      resumeAnchorUuid?: string
+    }
 
 export type DeserializeResult = {
   messages: Message[]
@@ -610,13 +629,111 @@ export function deserializeMessages(serializedMessages: Message[]): Message[] {
 }
 
 /**
+ * Fallback age above which an interrupted turn is no longer auto-continued.
+ *
+ * Auto-continuation runs tools and writes files with no human present. Doing
+ * that to a turn that was abandoned days ago is not "resuming work", it is
+ * replaying stale intent into a workspace that has since moved on — so the
+ * gate is on by default here and `0` turns it off.
+ *
+ * (Upstream reads the same env var but treats *unset* as "no age limit"; occ
+ * deliberately defaults it on. The parsing, the `0` escape hatch and the
+ * suppression behavior are otherwise identical.)
+ */
+const RESUME_INTERRUPTED_TURN_DEFAULT_MAX_AGE_MS = 60 * 60 * 1000
+
+/**
+ * Max age for auto-continuation, or undefined when the gate is disabled.
+ * A garbage value falls back to the default rather than disabling the gate —
+ * a typo must not silently remove the guard.
+ */
+function resumeInterruptedTurnMaxAgeMs(): number | undefined {
+  const raw = process.env.CLAUDE_CODE_RESUME_INTERRUPTED_TURN_MAX_AGE_MS
+  if (raw === undefined || raw.trim() === '') {
+    return RESUME_INTERRUPTED_TURN_DEFAULT_MAX_AGE_MS
+  }
+  const parsed = Number(raw)
+  if (parsed === 0) return undefined
+  return Number.isFinite(parsed) && parsed > 0
+    ? parsed
+    : RESUME_INTERRUPTED_TURN_DEFAULT_MAX_AGE_MS
+}
+
+/** Parse a persisted timestamp (ISO string or epoch ms) to epoch ms. */
+function parseMessageTimestamp(timestamp: unknown): number {
+  if (typeof timestamp === 'number') return timestamp
+  if (typeof timestamp === 'string') return Date.parse(timestamp)
+  return NaN
+}
+
+/**
+ * True when the newest turn-relevant message is older than the configured
+ * max age — i.e. this transcript has been sitting untouched and should not
+ * be auto-continued.
+ *
+ * System and progress entries are skipped for the same reason
+ * detectTurnInterruption skips them: they are bookkeeping that can be written
+ * long after the turn itself and would make an old transcript look fresh.
+ *
+ * A transcript with no parseable timestamp anywhere counts as stale: the age
+ * cannot be established, and the whole point of the gate is to not act
+ * unattended on a turn whose age is unknown.
+ */
+function isInterruptedTurnStale(messages: NormalizedMessage[]): boolean {
+  const maxAgeMs = resumeInterruptedTurnMaxAgeMs()
+  if (maxAgeMs === undefined) return false
+
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i]
+    if (!message) continue
+    if (message.type === 'system' || message.type === 'progress') continue
+    const parsed = parseMessageTimestamp(message.timestamp)
+    if (Number.isFinite(parsed)) return Date.now() - parsed >= maxAgeMs
+  }
+  return true
+}
+
+/**
+ * The prompt injected to continue an interrupted turn. Overridable so a
+ * harness that resumes on the user's behalf can say something more specific
+ * than the generic default.
+ */
+export function getResumePrompt(): string {
+  return (
+    process.env.CLAUDE_CODE_RESUME_PROMPT || 'Continue from where you left off.'
+  )
+}
+
+export type InterruptDetectionOptions = {
+  /**
+   * UUID of the last user/assistant message that a previous pass already
+   * offered a continuation for. When the transcript still ends on that exact
+   * message, the continuation was either already injected or already declined,
+   * and offering it a second time would replay the same turn.
+   *
+   * Persisted as a `resume-anchor` entry in the session log; callers that have
+   * no such anchor (a transcript written before that entry existed, or a
+   * `--resume <path>.jsonl` load that never builds a LogOption) simply omit it
+   * and get the age gate alone.
+   */
+  resumeAnchorUuid?: string
+}
+
+/**
  * Like deserializeMessages, but also detects whether the session was
  * interrupted mid-turn. Used by the SDK resume path to auto-continue
  * interrupted turns after a gateway-triggered restart.
+ *
+ * Three things can suppress the continuation, and all three matter because the
+ * consumer of `interrupted_prompt` runs it unattended:
+ *   1. the turn is older than the max age (see isInterruptedTurnStale),
+ *   2. the transcript still ends on `resumeAnchorUuid`,
+ *   3. no interruption was detected at all.
  * @internal Exported for testing
  */
 export function deserializeMessagesWithInterruptDetection(
   serializedMessages: Message[],
+  options?: InterruptDetectionOptions,
 ): DeserializeResult {
   try {
     // Clean transcript corruption before migrations or the existing API-shape
@@ -661,14 +778,46 @@ export function deserializeMessagesWithInterruptDetection(
 
     const internalState = detectTurnInterruption(filteredMessages)
 
+    // The transcript tail as it stands before any continuation is appended.
+    // Both the "already offered" comparison and the anchor handed back for the
+    // next resume must name this exact message.
+    const tailUuid =
+      internalState.kind === 'none'
+        ? undefined
+        : filteredMessages.findLast(
+            m => m.type === 'user' || m.type === 'assistant',
+          )?.uuid
+
+    // Already offered for this exact tail — re-offering would replay the turn.
+    const alreadyOfferedForAnchor =
+      options?.resumeAnchorUuid !== undefined &&
+      internalState.kind !== 'none' &&
+      tailUuid === options.resumeAnchorUuid
+
+    // Too old to act on unattended. Checked after detection (not before) so the
+    // suppression event records which kind of interruption was withheld.
+    const staleTurn =
+      !alreadyOfferedForAnchor &&
+      internalState.kind !== 'none' &&
+      isInterruptedTurnStale(filteredMessages)
+    if (staleTurn) {
+      logEvent('tengu_resume_stale_turn_suppressed', {
+        kind: internalState.kind as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+      })
+    }
+
     // Transform mid-turn interruptions into interrupted_prompt by appending
     // a synthetic continuation message. This unifies both interruption kinds
     // so the consumer only needs to handle interrupted_prompt.
     let turnInterruptionState: TurnInterruptionState
-    if (internalState.kind === 'interrupted_turn') {
+    if (alreadyOfferedForAnchor || staleTurn) {
+      // Suppressed: no continuation message is appended, so the sentinel logic
+      // below sees the transcript exactly as a non-interrupted one.
+      turnInterruptionState = { kind: 'none' }
+    } else if (internalState.kind === 'interrupted_turn') {
       const [continuationMessage] = normalizeMessages([
         createUserMessage({
-          content: 'Continue from where you left off.',
+          content: getResumePrompt(),
           isMeta: true,
         }),
       ])
@@ -676,7 +825,10 @@ export function deserializeMessagesWithInterruptDetection(
       turnInterruptionState = {
         kind: 'interrupted_prompt',
         message: continuationMessage!,
+        resumeAnchorUuid: tailUuid,
       }
+    } else if (internalState.kind === 'interrupted_prompt') {
+      turnInterruptionState = { ...internalState, resumeAnchorUuid: tailUuid }
     } else {
       turnInterruptionState = internalState
     }
@@ -721,7 +873,10 @@ type InternalInterruptionState =
  * Determines whether the conversation was interrupted mid-turn based on the
  * last message after filtering. An assistant as last message (after filtering
  * unresolved tool_uses) is treated as a completed turn because stop_reason is
- * always null on persisted messages in the streaming path.
+ * not a dependable interruption signal on persisted messages: the streaming
+ * path records each record at content_block_stop and only backfills
+ * stop_reason when message_delta arrives, so a record whose transcript flush
+ * won that race is persisted with `null` even though the turn completed.
  *
  * System and progress messages are skipped when finding the last turn-relevant
  * message — they are bookkeeping artifacts that should not mask a genuine
@@ -753,11 +908,12 @@ function detectTurnInterruption(
   }
 
   if (lastMessage.type === 'assistant') {
-    // In the streaming path, stop_reason is always null on persisted messages
-    // because messages are recorded at content_block_stop time, before
-    // message_delta delivers the stop_reason. After filterUnresolvedToolUses
-    // has removed assistant messages with unmatched tool_uses, an assistant as
-    // the last message means the turn most likely completed normally.
+    // stop_reason cannot decide this. The streaming path records a message at
+    // content_block_stop and backfills stop_reason on message_delta, so a
+    // persisted `null` means "the flush beat the backfill", not "the turn was
+    // cut short". After filterUnresolvedToolUses has removed assistant messages
+    // with unmatched tool_uses, an assistant as the last message means the turn
+    // most likely completed normally.
     return { kind: 'none' }
   }
 
@@ -1050,8 +1206,14 @@ export async function loadConversationForResume(
     // This ensures skills survive multiple compaction cycles after resume.
     restoreSkillStateFromMessages(messages)
 
-    // Deserialize messages to handle unresolved tool uses and ensure proper format
-    const deserialized = deserializeMessagesWithInterruptDetection(messages)
+    // Deserialize messages to handle unresolved tool uses and ensure proper
+    // format. The anchor comes off the log, so a `--resume <path>.jsonl` load
+    // (which never builds a LogOption) and any transcript written before the
+    // `resume-anchor` entry existed both pass undefined and fall back to the
+    // age gate alone — same behaviour as before this was wired.
+    const deserialized = deserializeMessagesWithInterruptDetection(messages, {
+      resumeAnchorUuid: log?.resumeAnchorUuid,
+    })
     messages = deserialized.messages
 
     // Process session start hooks for resume

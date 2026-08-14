@@ -7,6 +7,8 @@ import {
   assembleFinalAssistantOutputs,
   retryThirdPartyEventStream,
 } from '../streamAssembly.js'
+import { OpenAIRequestError } from '../openai/retry.js'
+import { isRetryableAPIError } from '../retryClassification.js'
 
 const PARTIAL: BetaMessage = {
   id: 'msg_test',
@@ -37,6 +39,19 @@ async function collectStream(
   const events: BetaRawMessageStreamEvent[] = []
   for await (const event of stream) events.push(event)
   return events
+}
+
+/** Same, for streams that are expected to end by throwing. */
+async function collectUntilThrow(
+  stream: AsyncIterable<BetaRawMessageStreamEvent>,
+): Promise<{ events: BetaRawMessageStreamEvent[]; error: unknown }> {
+  const events: BetaRawMessageStreamEvent[] = []
+  try {
+    for await (const event of stream) events.push(event)
+    return { events, error: undefined }
+  } catch (error) {
+    return { events, error }
+  }
 }
 
 const messageStart = {
@@ -111,7 +126,7 @@ describe('retryThirdPartyEventStream', () => {
 
   test('finalizes visible output instead of replaying the request', async () => {
     let attempts = 0
-    const events = await collectStream(
+    const { events, error } = await collectUntilThrow(
       retryThirdPartyEventStream({
         signal: new AbortController().signal,
         maxRetries: 10,
@@ -141,6 +156,94 @@ describe('retryThirdPartyEventStream', () => {
       delta: { stop_reason: 'end_turn' },
     })
     expect(events.at(-1)).toEqual(messageStop)
+    // The partial blocks stay, but the turn must not read as completed:
+    // finalizing silently is what made a truncated answer look like a normal
+    // end_turn with nothing to explain it.
+    expect((error as Error | undefined)?.message).toContain(
+      'The response above may be incomplete',
+    )
+    expect(isRetryableAPIError(error)).toBe(false)
+  })
+
+  test('names the cut-off tool call when one was still open', async () => {
+    const { events, error } = await collectUntilThrow(
+      retryThirdPartyEventStream({
+        signal: new AbortController().signal,
+        maxRetries: 10,
+        delay: async () => {},
+        create: async () =>
+          (async function* () {
+            yield messageStart
+            yield {
+              type: 'content_block_start',
+              index: 0,
+              content_block: {
+                type: 'tool_use',
+                id: 'toolu_1',
+                name: 'Bash',
+                input: {},
+              },
+            } as BetaRawMessageStreamEvent
+            yield {
+              type: 'content_block_delta',
+              index: 0,
+              delta: { type: 'input_json_delta', partial_json: '{"comm' },
+            } as BetaRawMessageStreamEvent
+            throw socketClosed()
+          })(),
+      }),
+    )
+
+    expect(events.at(-2)).toMatchObject({
+      type: 'message_delta',
+      delta: { stop_reason: 'tool_use' },
+    })
+    // `{"comm` cannot be parsed, so normalizeContentFromAPI substitutes `{}`.
+    // Saying so is the difference between a confusing tool failure and a
+    // legible one.
+    expect((error as Error | undefined)?.message).toContain(
+      'cut off mid-arguments',
+    )
+  })
+
+  test('does not replay a stream the adapter marked non-replayable', async () => {
+    let attempts = 0
+    const { error } = await collectUntilThrow(
+      retryThirdPartyEventStream({
+        signal: new AbortController().signal,
+        maxRetries: 10,
+        delay: async () => {},
+        create: async () =>
+          (async function* () {
+            attempts++
+            yield messageStart
+            yield {
+              type: 'content_block_start',
+              index: 0,
+              content_block: { type: 'thinking', thinking: '', signature: '' },
+            } as BetaRawMessageStreamEvent
+            yield {
+              type: 'content_block_delta',
+              index: 0,
+              delta: { type: 'thinking_delta', thinking: 'reasoning' },
+            } as BetaRawMessageStreamEvent
+            // What the Responses adapter raises once reasoning text has passed
+            // its own visibility barrier: transient, but already delivered.
+            throw new OpenAIRequestError('stream idle timeout', {
+              retryable: true,
+              replayable: false,
+            })
+          })(),
+      }),
+    )
+
+    // Without the flag this looked like a plain thinking-only disconnect and
+    // got replayed, re-rendering the reasoning and producing a second
+    // AssistantMessage for one response.
+    expect(attempts).toBe(1)
+    expect((error as Error | undefined)?.message).toContain(
+      'stream idle timeout',
+    )
   })
 })
 

@@ -1236,18 +1236,13 @@ describe('429 retry coverage', () => {
    * The ladder's first decision. A granted retry yields its countdown notice
    * before sleeping; a refusal throws CannotRetryError out of the same call.
    */
-  async function decisionFor(
-    headers: Record<string, string>,
+  async function decisionForError(
+    error: APIError,
   ): Promise<'retried' | 'refused'> {
     const generator = withRetry(
       async () => ({}) as unknown as Anthropic,
       async () => {
-        throw new APIError(
-          429,
-          undefined,
-          'rate limit exceeded',
-          new Headers(headers),
-        )
+        throw error
       },
       {
         maxRetries: 3,
@@ -1263,6 +1258,13 @@ describe('429 retry coverage', () => {
       return 'refused'
     }
   }
+
+  const decisionFor = (
+    headers: Record<string, string>,
+  ): Promise<'retried' | 'refused'> =>
+    decisionForError(
+      new APIError(429, undefined, 'rate limit exceeded', new Headers(headers)),
+    )
 
   const inSeconds = (offsetMs: number): string =>
     String(Math.floor((Date.now() + offsetMs) / 1000))
@@ -1307,6 +1309,75 @@ describe('429 retry coverage', () => {
     subscription.claudeAI = true
     subscription.enterprise = true
     expect(await decisionFor({})).toBe('retried')
+  })
+
+  // The whole ladder in front of a spent subscription window buys the user
+  // nothing: the window does not reopen inside a turn, and the copy that
+  // explains it (errors.ts, "You've reached your usage limit") only renders
+  // once the ladder gives up — up to ~10 minutes later with Retry-After: 60.
+  for (const header of [
+    'anthropic-ratelimit-unified-representative-claim',
+    'anthropic-ratelimit-unified-overage-status',
+    'anthropic-ratelimit-unified-overage-disabled-reason',
+  ]) {
+    test(`refuses a subscription 429 labelled by ${header}`, async () => {
+      expect(await decisionFor({ [header]: 'rejected' })).toBe('refused')
+    })
+  }
+
+  test('a quota 429 outranks x-should-retry: true', async () => {
+    expect(
+      await decisionFor({
+        'x-should-retry': 'true',
+        'anthropic-ratelimit-unified-overage-status': 'rejected',
+      }),
+    ).toBe('refused')
+  })
+
+  test('quota headers do not stop PAYG or enterprise seats retrying', async () => {
+    const quota = { 'anthropic-ratelimit-unified-overage-status': 'rejected' }
+    subscription.claudeAI = false
+    expect(await decisionFor(quota)).toBe('retried')
+
+    subscription.claudeAI = true
+    subscription.enterprise = true
+    expect(await decisionFor(quota)).toBe('retried')
+  })
+
+  test('refuses a credits_required 429 on every seat shape', async () => {
+    const creditsRequired = () =>
+      new APIError(
+        429,
+        { error: { details: { error_code: 'credits_required' } } },
+        'Extra usage is required to continue',
+        new Headers(),
+      )
+    expect(await decisionForError(creditsRequired())).toBe('refused')
+
+    subscription.claudeAI = false
+    expect(await decisionForError(creditsRequired())).toBe('refused')
+  })
+
+  // "We could not read your credit state" is not "you are out of credit", so
+  // the credits_required veto stands down and the seat's own 429 rule decides.
+  test('a failed credit check falls through to the seat rule', async () => {
+    const creditCheckFailed = (reason: string) =>
+      new APIError(
+        429,
+        { error: { details: { error_code: 'credits_required' } } },
+        'Usage credits are required',
+        new Headers({
+          'anthropic-ratelimit-unified-overage-disabled-reason': reason,
+        }),
+      )
+    for (const reason of ['fetch_error', 'org_level_disabled_until']) {
+      subscription.claudeAI = false
+      expect(await decisionForError(creditCheckFailed(reason))).toBe('retried')
+
+      // A subscription seat still stops, but on the unified-header rule.
+      subscription.claudeAI = true
+      expect(await decisionForError(creditCheckFailed(reason))).toBe('refused')
+    }
   })
 })
 
@@ -1369,6 +1440,155 @@ describe('configured model fallback', () => {
       })
     })
   }
+
+  /** Run one attempt and hand back whatever left the ladder. */
+  async function outcomeFor(
+    error: unknown,
+    options: { fallbackModel?: string } = { fallbackModel: 'claude-haiku' },
+  ): Promise<unknown> {
+    const generator = withRetry(
+      async () => ({}) as unknown as Anthropic,
+      async () => {
+        throw error
+      },
+      {
+        maxRetries: 0,
+        model: 'claude-sonnet',
+        thinkingConfig: { type: 'disabled' },
+        ...options,
+      },
+    )
+    try {
+      await generator.next()
+      return undefined
+    } catch (caught) {
+      return caught
+    }
+  }
+
+  // Before this, a configured fallback only engaged for the three shapes
+  // modelFallbackReason recognises plus repeated 529s. Every other permanent
+  // failure ended the turn with the fallback list untouched.
+  test('switches models as a last resort for an otherwise fatal failure', async () => {
+    const error = new APIError(
+      400,
+      undefined,
+      'unsupported parameter: output_config',
+      new Headers(),
+    )
+    expect(await outcomeFor(error)).toMatchObject({
+      originalModel: 'claude-sonnet',
+      fallbackModel: 'claude-haiku',
+      reason: 'last_resort',
+      originalError: error,
+    })
+  })
+
+  test('needs a fallback model to have one to switch to', async () => {
+    expect(
+      await outcomeFor(
+        new APIError(400, undefined, 'unsupported parameter', new Headers()),
+        {},
+      ),
+    ).toBeInstanceOf(CannotRetryError)
+  })
+
+  // A different model reproduces all of these verbatim, so spending a request
+  // to find that out is pure latency.
+  for (const [label, error] of [
+    ['auth 401', new APIError(401, undefined, 'unauthorized', new Headers())],
+    [
+      'proxy auth 407',
+      new APIError(407, undefined, 'proxy auth', new Headers()),
+    ],
+    ['payload 413', new APIError(413, undefined, 'too large', new Headers())],
+    [
+      'context overflow',
+      new APIError(400, undefined, 'prompt is too long', new Headers()),
+    ],
+    [
+      'exhausted credit',
+      new APIError(
+        400,
+        undefined,
+        'Your credit balance is too low',
+        new Headers(),
+      ),
+    ],
+    [
+      'disabled org',
+      new APIError(
+        403,
+        undefined,
+        'This organization has been disabled',
+        new Headers(),
+      ),
+    ],
+  ] as const) {
+    test(`does not burn a fallback on ${label}`, async () => {
+      expect(await outcomeFor(error)).toBeInstanceOf(CannotRetryError)
+    })
+  }
+
+  describe('under the retry watchdog', () => {
+    beforeEach(() => {
+      process.env.CLAUDE_CODE_RETRY_WATCHDOG = '1'
+    })
+    afterEach(() => {
+      delete process.env.CLAUDE_CODE_RETRY_WATCHDOG
+    })
+
+    // Waiting out a 5xx is what unattended mode is for; waiting out a retired
+    // model id is not — that one never resolves, so the run must switch.
+    for (const [label, error, reason] of [
+      [
+        'model 404',
+        new APIError(
+          404,
+          undefined,
+          '{"type":"not_found_error","message":"model: unavailable"}',
+          new Headers(),
+        ),
+        'model_not_found',
+      ],
+      [
+        'model permission 403',
+        new APIError(
+          403,
+          undefined,
+          '{"type":"permission_error","message":"model: denied"}',
+          new Headers(),
+        ),
+        'permission_denied',
+      ],
+    ] as const) {
+      test(`still falls back for ${label}`, async () => {
+        expect(await outcomeFor(error)).toMatchObject({
+          fallbackModel: 'claude-haiku',
+          reason,
+        })
+      })
+    }
+
+    test('keeps waiting out a 5xx instead of switching', async () => {
+      const generator = withRetry(
+        async () => ({}) as unknown as Anthropic,
+        async () => {
+          throw new APIError(503, undefined, 'backend down', new Headers())
+        },
+        {
+          maxRetries: 1,
+          model: 'claude-sonnet',
+          fallbackModel: 'claude-haiku',
+          thinkingConfig: { type: 'disabled' },
+        },
+      )
+      const step = await generator.next()
+      await generator.return(undefined as never)
+      // A retry notice, not a FallbackTriggeredError.
+      expect(step.done).toBe(false)
+    })
+  })
 
   test('does not treat an endpoint 404 as a model fallback', async () => {
     const generator = withRetry(

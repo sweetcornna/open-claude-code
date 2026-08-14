@@ -2420,25 +2420,36 @@ async function* queryModel(
               }
             }
 
-            // Write final usage and stop_reason back to the last yielded
-            // message. Messages are created at content_block_stop from
-            // partialMessage, which was set at message_start before any tokens
-            // were generated (output_tokens: 0, stop_reason: null).
-            // message_delta arrives after content_block_stop with the real
-            // values.
+            // Write final usage and stop_reason back to EVERY message this
+            // response produced. Messages are created at content_block_stop
+            // from partialMessage, which was set at message_start before any
+            // tokens were generated (output_tokens: 0, stop_reason: null).
+            // message_delta arrives after the last content_block_stop with the
+            // real values.
+            //
+            // All of them, not just the tail: one API response is split into
+            // one record per content block, so a "thinking + text" or
+            // "text + tool_use" turn used to persist every record but the last
+            // with `stop_reason: null` and `output_tokens: 0`. Downstream code
+            // already assumes the splits share one usage snapshot — see the
+            // parallel-tool-call note on tokenCountWithEstimation, which walks
+            // back to the first sibling with the same `message.id`.
+            //
+            // Nothing sums usage across records (every reader scans backwards
+            // and takes the first one it finds), so restating it on the earlier
+            // splits cannot double-count.
             //
             // IMPORTANT: Use direct property mutation, not object replacement.
             // The transcript write queue holds a reference to message.message
             // and serializes it lazily (100ms flush interval). Object
-            // replacement ({ ...lastMsg.message, usage }) would disconnect
-            // the queued reference; direct mutation ensures the transcript
-            // captures the final values.
+            // replacement ({ ...msg.message, usage }) would disconnect the
+            // queued reference; direct mutation ensures the transcript captures
+            // the final values.
             stopReason = part.delta.stop_reason
 
-            const lastMsg = newMessages.at(-1)
-            if (lastMsg) {
-              lastMsg.message.usage = usage
-              lastMsg.message.stop_reason = stopReason
+            for (const msg of newMessages) {
+              msg.message.usage = usage
+              msg.message.stop_reason = stopReason
             }
 
             // Update cost

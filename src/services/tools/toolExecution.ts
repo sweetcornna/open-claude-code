@@ -40,6 +40,7 @@ import { startSpeculativeClassifierCheck } from '@open-claude-code/builtin-tools
 import { BASH_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/BashTool/toolName.js'
 import { FILE_EDIT_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/FileEditTool/constants.js'
 import { FILE_READ_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/FileReadTool/prompt.js'
+import { getReadTruncationNotice } from '@open-claude-code/builtin-tools/tools/FileReadTool/truncationNotice.js'
 import { FILE_WRITE_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/FileWriteTool/prompt.js'
 import { NOTEBOOK_EDIT_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/NotebookEditTool/constants.js'
 import { POWERSHELL_TOOL_NAME } from '@open-claude-code/builtin-tools/tools/PowerShellTool/toolName.js'
@@ -1617,6 +1618,27 @@ async function checkPermissionsAndCallTool(
 
     if (isMcpTool(tool)) {
       await addToolResult(toolOutput)
+    }
+
+    // A whole-file Read that the token cap forced into page 1 carries a banner
+    // on the side. It rides its own attachment rather than being spliced into
+    // the tool_result so the model cannot mistake it for file content, and so
+    // it survives PostToolUse output replacement.
+    if (
+      tool.name === FILE_READ_TOOL_NAME &&
+      result.data !== null &&
+      typeof result.data === 'object'
+    ) {
+      const banner = getReadTruncationNotice(result.data as object)
+      if (banner !== undefined) {
+        resultingMessages.push({
+          message: createAttachmentMessage({
+            type: 'read_truncation_notice',
+            banner,
+            toolUseID,
+          }),
+        })
+      }
     }
 
     // Show PostToolUse hook timing inline below tool result when > 500ms.

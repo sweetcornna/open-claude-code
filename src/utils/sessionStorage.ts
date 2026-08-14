@@ -67,6 +67,7 @@ export {
   saveCustomTitle,
   saveGoal,
   saveMode,
+  saveResumeAnchor,
   saveTag,
   saveTaskSummary,
   saveWorktreeState,

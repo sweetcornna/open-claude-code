@@ -65,6 +65,14 @@ export type ProgressTracker = {
   // so we keep the latest value. output_tokens is per-turn, so we sum those.
   latestInputTokens: number;
   cumulativeOutputTokens: number;
+  // message.id of the API response already folded into cumulativeOutputTokens.
+  //
+  // One response becomes several AssistantMessage records — the stream pushes
+  // one per content_block_stop — and every one of them carries that response's
+  // usage verbatim. Summing per record would multiply a thinking+text+tool_use
+  // turn's output by three. Siblings share message.id, so counting the first
+  // and skipping the rest is exactly "count each API response once".
+  lastCountedResponseId: string | undefined;
   recentActivities: ToolActivity[];
 };
 
@@ -73,6 +81,7 @@ export function createProgressTracker(): ProgressTracker {
     toolUseCount: 0,
     latestInputTokens: 0,
     cumulativeOutputTokens: 0,
+    lastCountedResponseId: undefined,
     recentActivities: [],
   };
 }
@@ -101,10 +110,16 @@ export function updateProgressFromMessage(
   if (!usage) {
     return;
   }
-  // Keep latest input (it's cumulative in the API), sum outputs
+  // Keep latest input (it's cumulative in the API), sum outputs once per
+  // response — see lastCountedResponseId. A record with no id is counted, since
+  // there is nothing to dedupe it against and dropping it would under-report.
   tracker.latestInputTokens =
     (usage.input_tokens as number) + (usage.cache_creation_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0);
-  tracker.cumulativeOutputTokens += usage.output_tokens as number;
+  const responseId = (message.message as { id?: string } | undefined)?.id;
+  if (responseId === undefined || responseId !== tracker.lastCountedResponseId) {
+    tracker.cumulativeOutputTokens += usage.output_tokens as number;
+    tracker.lastCountedResponseId = responseId;
+  }
   for (const content of (message.message!.content ?? []) as Array<{ type: string; name?: string; input?: unknown }>) {
     if (content.type === 'tool_use') {
       tracker.toolUseCount++;

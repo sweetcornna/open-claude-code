@@ -62,18 +62,84 @@ export function startsWithApiErrorPrefix(text: string): boolean {
 }
 export const PROMPT_TOO_LONG_ERROR_MESSAGE = 'Prompt is too long'
 
+/**
+ * Every provider's way of saying "this request does not fit in the context
+ * window". This is the single place that wording lives — both compaction
+ * fallbacks (the reactive compact retry and the blocking-limit preempt) key
+ * off it, so a provider whose phrasing is missing here silently loses BOTH
+ * safety nets and runs until the upstream rejects the turn outright.
+ *
+ * That is not hypothetical: occ only ever matched the Anthropic phrasing, so
+ * an OpenAI-compatible gateway answering `Your input exceeds the context
+ * window of this model` (code `context_length_exceeded`) matched nothing and
+ * grew unbounded to 371K tokens before the gateway itself refused.
+ *
+ * Matched against BOTH the rendered error text and the raw `errorDetails`
+ * payload, because third-party adapters render a `API Error [X]: … · code=…`
+ * summary and stash the structured provider body separately.
+ *
+ * Keep additions to phrasing that can *only* mean context overflow. A bare
+ * "too large" or "limit" also describes rate limits and media rejections,
+ * both of which have their own recovery paths that this must not steal.
+ */
+const CONTEXT_OVERFLOW_ERROR_PATTERN = new RegExp(
+  [
+    // Anthropic / Vertex / Bedrock
+    'prompt is too long',
+    'input is too long for requested model',
+    'input length and `?max_tokens`? exceed context limit',
+    // OpenAI + Azure + every OpenAI-compatible gateway (error `code`)
+    'context[ _]length[ _]exceeded',
+    // "This model's maximum context length is 128000 tokens"
+    'maximum (?:context|prompt|input) length',
+    // "Your input exceeds the context window of this model"
+    'exceed(?:s|ed)?[^.\\n]{0,40}context (?:window|length|limit)',
+    // "context window exceeded", "context limit exceeded"
+    'context (?:window|length|limit)[^.\\n]{0,40}exceed(?:s|ed)',
+    // Gemini: "The input token count (1052916) exceeds the maximum number of
+    // tokens allowed (1048576)"
+    '(?:input|prompt|message)[ _](?:token[ _])?count[^.\\n]{0,60}exceed(?:s|ed)',
+    // Grok / xAI and several local runtimes
+    'reduce the length of the (?:messages|prompt|input)',
+    'too many tokens',
+  ].join('|'),
+  'i',
+)
+
+/**
+ * Does this raw API error text mean "the conversation no longer fits"?
+ * Provider-agnostic; see {@link CONTEXT_OVERFLOW_ERROR_PATTERN}.
+ */
+export function isContextOverflowErrorText(raw: string): boolean {
+  return CONTEXT_OVERFLOW_ERROR_PATTERN.test(raw)
+}
+
 export function isPromptTooLongMessage(msg: AssistantMessage): boolean {
   if (!msg.isApiErrorMessage) {
     return false
   }
   const content = msg.message!.content
-  if (!Array.isArray(content)) {
-    return false
+  if (Array.isArray(content)) {
+    for (const block of content) {
+      if (block.type !== 'text') {
+        continue
+      }
+      // Anthropic path, unchanged: getAssistantMessageFromError rewrites the
+      // content to exactly PROMPT_TOO_LONG_ERROR_MESSAGE, and the UI matches
+      // on that exact string.
+      if (block.text.startsWith(PROMPT_TOO_LONG_ERROR_MESSAGE)) {
+        return true
+      }
+      if (isContextOverflowErrorText(block.text)) {
+        return true
+      }
+    }
   }
-  return content.some(
-    block =>
-      block.type === 'text' &&
-      block.text.startsWith(PROMPT_TOO_LONG_ERROR_MESSAGE),
+  // Third-party adapters keep the provider's structured body here while the
+  // rendered content is a generic "API Error [X]: …" line.
+  return (
+    typeof msg.errorDetails === 'string' &&
+    isContextOverflowErrorText(msg.errorDetails)
   )
 }
 
@@ -87,13 +153,38 @@ export function parsePromptTooLongTokenCounts(rawMessage: string): {
   actualTokens: number | undefined
   limitTokens: number | undefined
 } {
-  const match = rawMessage.match(
+  const anthropic = rawMessage.match(
     /prompt is too long[^0-9]*(\d+)\s*tokens?\s*>\s*(\d+)/i,
   )
-  return {
-    actualTokens: match ? parseInt(match[1]!, 10) : undefined,
-    limitTokens: match ? parseInt(match[2]!, 10) : undefined,
+  if (anthropic) {
+    return {
+      actualTokens: parseInt(anthropic[1]!, 10),
+      limitTokens: parseInt(anthropic[2]!, 10),
+    }
   }
+  // OpenAI-compatible: "This model's maximum context length is 128000 tokens.
+  // However, your messages resulted in 130000 tokens" — limit first.
+  const openai = rawMessage.match(
+    /maximum (?:context|prompt|input) length is\s*(\d+)\s*tokens?[^0-9]{0,80}?(\d+)\s*tokens?/i,
+  )
+  if (openai) {
+    return {
+      actualTokens: parseInt(openai[2]!, 10),
+      limitTokens: parseInt(openai[1]!, 10),
+    }
+  }
+  // Gemini: "The input token count (1052916) exceeds the maximum number of
+  // tokens allowed (1048576)" — actual first.
+  const gemini = rawMessage.match(
+    /(?:input|prompt|message)[ _](?:token[ _])?count\D{0,20}(\d+)\D{0,80}?exceed(?:s|ed)?\D{0,80}?(\d+)/i,
+  )
+  if (gemini) {
+    return {
+      actualTokens: parseInt(gemini[1]!, 10),
+      limitTokens: parseInt(gemini[2]!, 10),
+    }
+  }
+  return { actualTokens: undefined, limitTokens: undefined }
 }
 
 /**
@@ -1119,13 +1210,11 @@ export function classifyAPIError(error: unknown): string {
     return 'server_overload'
   }
 
-  // Prompt/content size errors
-  if (
-    error instanceof Error &&
-    error.message
-      .toLowerCase()
-      .includes(PROMPT_TOO_LONG_ERROR_MESSAGE.toLowerCase())
-  ) {
+  // Prompt/content size errors. Uses the provider-agnostic predicate so a
+  // gateway's `context_length_exceeded` is reported as prompt_too_long rather
+  // than a shapeless client_error — otherwise the one failure mode that has a
+  // recovery path is invisible in the error breakdown.
+  if (error instanceof Error && isContextOverflowErrorText(error.message)) {
     return 'prompt_too_long'
   }
 

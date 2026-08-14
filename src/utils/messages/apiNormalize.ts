@@ -45,6 +45,7 @@ import {
   smooshSystemReminderSiblings,
 } from './merge.js'
 import { isSystemLocalCommandMessage } from './predicates.js'
+import { collectMissingReadTruncationBanners } from './readTruncationReminder.js'
 import { deriveShortMessageId, wrapInSystemReminder } from './text.js'
 import {
   contentHasToolReference,
@@ -308,6 +309,12 @@ export function normalizeMessagesForAPI(
     }
   }
 
+  // Truncated-Read banners that are no longer in the transcript (see
+  // readTruncationReminder.ts). Computed over the reordered list so the
+  // attachment scan sees attachments in the same positions the loop will.
+  const missingTruncationBanners =
+    collectMissingReadTruncationBanners(reorderedMessages)
+
   const result: (UserMessage | AssistantMessage)[] = []
   reorderedMessages
     .filter(
@@ -447,11 +454,31 @@ export function normalizeMessagesForAPI(
               lastMessage,
               normalizedMessage,
             )
-            return
+          } else {
+            // Otherwise, add the message normally
+            result.push(normalizedMessage)
           }
 
-          // Otherwise, add the message normally
-          result.push(normalizedMessage)
+          // A Read the token cap cut to page 1 announces itself with a
+          // `read_truncation_notice` attachment — which is stripped from the
+          // persisted transcript, so after --resume the model sees a partial
+          // file with nothing saying so. Rebuild the banner from the durable
+          // `toolUseResult.file.truncatedByTokenCap` flag. Merged into the
+          // tool_result's own message so a round trip through here sees it and
+          // does not add a second copy.
+          const missingBanner = missingTruncationBanners.get(message.uuid)
+          if (missingBanner !== undefined) {
+            const bannerMessage = createUserMessage({
+              content: wrapInSystemReminder(missingBanner),
+              isMeta: true,
+            })
+            const tail = last(result)
+            if (tail?.type === 'user') {
+              result[result.length - 1] = mergeUserMessages(tail, bannerMessage)
+            } else {
+              result.push(bannerMessage)
+            }
+          }
           return
         }
         case 'assistant': {

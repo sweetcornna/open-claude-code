@@ -235,6 +235,65 @@ describe('updateProgressFromMessage', () => {
     expect(tracker.cumulativeOutputTokens).toBe(50)
   })
 
+  /**
+   * One API response becomes several AssistantMessage records (one per
+   * content_block_stop), and claude.ts backfills the response's usage onto
+   * every one of them. Before that backfill only the last record carried a
+   * non-zero output_tokens, so a naive sum happened to be right; afterwards a
+   * thinking+text+tool_use turn would report 3x its real output. Siblings
+   * share message.id, which is what makes "once per response" decidable here.
+   */
+  test('counts one API response once, however many records it was split into', () => {
+    const tracker = createProgressTracker()
+    const split = () => {
+      const msg = makeAssistantMessage({
+        input_tokens: 100,
+        output_tokens: 50,
+        cache_creation_input_tokens: 20,
+        cache_read_input_tokens: 30,
+      })
+      msg.message.id = 'msg_split'
+      return msg
+    }
+
+    updateProgressFromMessage(tracker, split())
+    updateProgressFromMessage(tracker, split())
+    updateProgressFromMessage(tracker, split())
+
+    expect(tracker.cumulativeOutputTokens).toBe(50)
+    expect(tracker.latestInputTokens).toBe(150)
+  })
+
+  test('still sums across distinct API responses', () => {
+    const tracker = createProgressTracker()
+    const response = (id: string, output: number) => {
+      const msg = makeAssistantMessage({
+        input_tokens: 10,
+        output_tokens: output,
+      })
+      msg.message.id = id
+      return msg
+    }
+
+    updateProgressFromMessage(tracker, response('msg_a', 40))
+    updateProgressFromMessage(tracker, response('msg_b', 25))
+
+    expect(tracker.cumulativeOutputTokens).toBe(65)
+  })
+
+  test('records without an id are still counted', () => {
+    const tracker = createProgressTracker()
+    updateProgressFromMessage(
+      tracker,
+      makeAssistantMessage({ input_tokens: 1, output_tokens: 7 }),
+    )
+    updateProgressFromMessage(
+      tracker,
+      makeAssistantMessage({ input_tokens: 1, output_tokens: 7 }),
+    )
+    expect(tracker.cumulativeOutputTokens).toBe(14)
+  })
+
   test('counts tool_use blocks and tracks recent activities', () => {
     const tracker = createProgressTracker()
     const msg = makeAssistantMessage({ input_tokens: 0, output_tokens: 0 }, [

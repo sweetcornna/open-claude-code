@@ -38,9 +38,11 @@ beforeAll(() =>
 )
 afterAll(() => settingsMock.reset())
 
-const { getContextWindowForModel, supportsContextWindow } = await import(
-  '../context.js'
-)
+const {
+  getConfiguredContextWindowCap,
+  getContextWindowForModel,
+  supportsContextWindow,
+} = await import('../context.js')
 const { apply1mContextOptIn, getDefaultMainLoopModel } = await import(
   '../../model/model.js'
 )
@@ -207,8 +209,11 @@ describe('per-tier context window', () => {
     } as SettingsJson
     const session = { opus: { contextTokens: 512_000 } }
 
+    // `[1m]` on purpose: 512k is only a servable window on a model that carries
+    // the opt-in, and this test is about slot isolation, not about the clamp.
+    // The bare-id half of the same pair is pinned by the D1 test below.
     expect(
-      getContextWindowForModel('claude-opus-5', undefined, 'opus', session),
+      getContextWindowForModel('claude-opus-5[1m]', undefined, 'opus', session),
     ).toBe(512_000)
     expect(
       getContextWindowForModel('claude-sonnet-5', undefined, 'sonnet', session),
@@ -283,6 +288,113 @@ describe('per-tier context window', () => {
     expect(supportsContextWindow('claude-opus-5', 1_000_000)).toBe(true)
     expect(supportsContextWindow('claude-haiku-4-5[1m]', 1_000_000)).toBe(true)
     expect(supportsContextWindow('deepseek-v4-pro', 1_000_000)).toBe(true)
+  })
+
+  test('a per-tier value inside the 200k-1M band is capped to what is served', () => {
+    // The exact configuration found on a real machine: every slot pinned to
+    // 372000. Before the clamp, `supportsContextWindow` only gated at 1M, so
+    // this was returned verbatim while `wantsTierWideContext` (also gated at
+    // 1M) declined to add `[1m]` — no beta header, so the API still cut off at
+    // 200k while auto-compact aimed at ~352k. Anthropic serves 200k and 1M and
+    // nothing in between, so the band snaps down.
+    const BAND = 372_000
+    userSettings = {
+      modelSettings: {
+        default: { contextTokens: BAND },
+        haiku: { contextTokens: BAND },
+        sonnet: { contextTokens: BAND },
+        opus: { contextTokens: BAND },
+        fable: { contextTokens: BAND },
+      },
+    } as SettingsJson
+    initialSettings = { modelType: 'anthropic' }
+    process.env.ANTHROPIC_API_KEY = 'test-key'
+
+    for (const [model, slot] of [
+      ['claude-opus-5', 'opus'],
+      ['claude-sonnet-5', 'sonnet'],
+      ['claude-haiku-4-5', 'haiku'],
+      ['claude-fable-5', 'fable'],
+    ] as const) {
+      const window = getContextWindowForModel(model, undefined, slot)
+      expect(window).toBe(200_000)
+      // The load-bearing claim: whatever auto-compact does with this number, it
+      // cannot end up aiming past the window the endpoint actually enforces.
+      expect(window).toBeLessThanOrEqual(200_000)
+      expect(apply1mContextOptIn(model, undefined, slot)).toBe(model)
+      expect(getModelBetas(model)).not.toContain(CONTEXT_1M_BETA_HEADER)
+    }
+  })
+
+  test('the cap is reported so it can be shown instead of silently shrinking', () => {
+    userSettings = {
+      modelSettings: { opus: { contextTokens: 372_000 } },
+    } as SettingsJson
+
+    expect(
+      getConfiguredContextWindowCap('claude-opus-5', undefined, 'opus'),
+    ).toEqual({ configured: 372_000, window: 200_000 })
+    // A budget SMALLER than the model serves is a legitimate choice, not a cap.
+    userSettings = {
+      modelSettings: { opus: { contextTokens: 128_000 } },
+    } as SettingsJson
+    expect(
+      getConfiguredContextWindowCap('claude-opus-5', undefined, 'opus'),
+    ).toBeNull()
+  })
+
+  test('a sub-1M budget on a [1m] model is a budget, not an overreach', () => {
+    userSettings = {
+      modelSettings: { opus: { contextTokens: 372_000 } },
+    } as SettingsJson
+
+    expect(
+      getContextWindowForModel('claude-opus-5[1m]', undefined, 'opus'),
+    ).toBe(372_000)
+    expect(
+      getConfiguredContextWindowCap('claude-opus-5[1m]', undefined, 'opus'),
+    ).toBeNull()
+  })
+
+  test('the band is not clamped for third-party ids', () => {
+    // The invariant the [1m] gate has always had: a third-party id has no beta
+    // header to forget, and the user who pointed at that endpoint knows its
+    // window better than occ does.
+    process.env.OPENAI_DEFAULT_OPUS_MODEL = 'glm-5.2'
+    userSettings = {
+      modelSettings: { opus: { contextTokens: 372_000 } },
+    } as SettingsJson
+
+    expect(getContextWindowForModel('glm-5.2')).toBe(372_000)
+    expect(getConfiguredContextWindowCap('glm-5.2')).toBeNull()
+    expect(supportsContextWindow('gpt-5.6-sol', 1_000_000)).toBe(true)
+    expect(supportsContextWindow('gpt-5.6-sol', 372_000)).toBe(true)
+  })
+
+  test('env stays the highest-priority correction and is never capped', () => {
+    userSettings = {
+      modelSettings: { opus: { contextTokens: 128_000 } },
+    } as SettingsJson
+    process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS = '372000'
+
+    expect(getContextWindowForModel('claude-opus-5')).toBe(372_000)
+    expect(
+      getConfiguredContextWindowCap('claude-opus-5', undefined, 'opus'),
+    ).toBeNull()
+  })
+
+  test('the picker never offers a rung the accounting would cap', () => {
+    // CONTEXT_LADDER in ModelPicker is [128k, 200k, 272k, 512k, 1M].
+    for (const tokens of [128_000, 200_000, 272_000, 512_000, 1_000_000]) {
+      expect(supportsContextWindow('claude-opus-5', tokens)).toBe(
+        getContextWindowForModel('claude-opus-5', undefined, 'opus', {
+          opus: { contextTokens: tokens },
+        }) === tokens,
+      )
+    }
+    expect(supportsContextWindow('claude-opus-5', 272_000)).toBe(false)
+    expect(supportsContextWindow('claude-opus-5', 512_000)).toBe(false)
+    expect(supportsContextWindow('claude-opus-5[1m]', 512_000)).toBe(true)
   })
 
   test('the family default needs the [1m] opt-in before it reports 1M', () => {

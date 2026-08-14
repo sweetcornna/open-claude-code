@@ -608,7 +608,7 @@ function hasSavedContextOverride(slot: ModelSettingsSlot | undefined): boolean {
  * the first press moves off the current value rather than jumping to the
  * bottom of the ladder.
  */
-function nextContextChoice(
+export function nextContextChoice(
   model: string,
   current: number | null | undefined,
   slot: ModelSettingsSlot | undefined,
@@ -622,7 +622,16 @@ function nextContextChoice(
   const currentTokens = current === undefined ? saved : current;
   if (currentTokens === null || currentTokens === undefined) return rungs[0]!;
   const index = rungs.indexOf(currentTokens);
-  if (index === -1) return rungs[0]!;
+  if (index === -1) {
+    // The saved value is not a rung the model can serve — a window in the
+    // 200k–1M band on a bare Claude id gets filtered out above. Land on the
+    // largest window that IS served and no larger than it, not on the bottom
+    // of the ladder: 200k is right there and fully served, and restarting at
+    // 128k would throw away a third of a usable window while "correcting" the
+    // unusable one. Below every rung, the bottom is the only move.
+    const served = rungs.filter(tokens => tokens <= currentTokens);
+    return served.at(-1) ?? rungs[0]!;
+  }
   // Past the top rung is "back to the tier default", which is how an override
   // gets cleared without a second key.
   return index === rungs.length - 1 ? null : rungs[index + 1]!;

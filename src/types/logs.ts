@@ -49,6 +49,7 @@ export type LogOption = {
   worktreeSession?: PersistedWorktreeSession | null // Worktree state at session end (null = exited, undefined = never entered)
   contentReplacements?: ContentReplacementRecord[] // Replacement decisions for resume reconstruction
   goal?: GoalState // Active goal state at session end (for resume)
+  resumeAnchorUuid?: UUID // Tail a previous resume already offered to continue (see ResumeAnchorEntry)
 }
 
 export type SummaryMessage = {
@@ -322,6 +323,27 @@ export type SpeculationAcceptMessage = {
   timeSavedMs: number
 }
 
+/**
+ * Records that a resume already offered to auto-continue the interrupted turn
+ * whose transcript tail is `resumeAnchorUuid`.
+ *
+ * Written when the offer is made, read back by `loadConversationForResume`,
+ * and compared against the tail on the next resume: if the transcript still
+ * ends on this exact message the previous offer produced nothing (the process
+ * died again, or the run wrote no messages), so re-offering would replay the
+ * same turn. See `InterruptDetectionOptions` in
+ * `src/utils/session/conversationRecovery.ts`.
+ *
+ * Session-scoped and idempotent — the newest entry for a session wins, and a
+ * transcript written by a build that predates this entry simply has none,
+ * which lands back on the age gate alone.
+ */
+export type ResumeAnchorEntry = {
+  type: 'resume-anchor'
+  sessionId: UUID
+  resumeAnchorUuid: UUID
+}
+
 export type Entry =
   | TranscriptMessage
   | SummaryMessage
@@ -338,6 +360,7 @@ export type Entry =
   | AttributionSnapshotMessage
   | QueueOperationMessage
   | SpeculationAcceptMessage
+  | ResumeAnchorEntry
   | ModeEntry
   | WorktreeStateEntry
   | ContentReplacementEntry

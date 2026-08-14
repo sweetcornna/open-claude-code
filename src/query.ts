@@ -9,6 +9,7 @@ import {
   calculateTokenWarningState,
   estimateMaxTurnGrowth,
   getEffectiveContextWindowSize,
+  isAutoCompactCircuitOpen,
   isAutoCompactEnabled,
   type AutoCompactTrackingState,
 } from './services/compact/autoCompact.js'
@@ -99,6 +100,7 @@ import {
   parseUserSpecifiedModel,
   renderModelName,
 } from './utils/model/model.js'
+import { buildAvailabilityFallbackChain } from './utils/model/modelFallback.js'
 import {
   doesMostRecentAssistantMessageExceed200k,
   finalContextTokensFromLastResponse,
@@ -565,7 +567,12 @@ async function* queryLoop(
   // direct query() callers (including SDK-side helpers) can still pass them.
   // Resolve at the consumption boundary so aliases are never sent as raw API
   // model ids and each fallback attempt updates the context consistently.
-  const resolvedFallbackModels = fallbackModels?.map(parseUserSpecifiedModel)
+  // CLAUDE_CODE_NO_MODEL_FALLBACK collapses the chain here rather than at each
+  // pivot site: with no candidates, `resolvedFallbackModels[nextFallbackIndex]`
+  // is always undefined and no downstream code can substitute a model.
+  const resolvedFallbackModels = buildAvailabilityFallbackChain(
+    fallbackModels,
+  )?.map(parseUserSpecifiedModel)
   let nextFallbackIndex = 0
 
   // Mutable cross-iteration state. The loop body destructures this at the top
@@ -898,11 +905,23 @@ async function* queryLoop(
     // it predates the experiment and is already the control-arm baseline.
     const mediaRecoveryEnabled =
       reactiveCompact?.isReactiveCompactEnabled() ?? false
+    //
+    // The skip is a promise that automatic compaction will keep the context
+    // in bounds. Once the autocompact circuit breaker latches open that
+    // promise is void — autoCompactIfNeeded declines every further attempt
+    // this turn — so the preempt has to come back or the turn keeps sending
+    // ever-larger prompts with nothing left to catch them. A gateway whose
+    // overflow wording reactive compact cannot parse would otherwise run
+    // uncapped until the upstream refuses the request outright.
     if (
       !compactionResult &&
       querySource !== 'compact' &&
       querySource !== 'session_memory' &&
-      !(reactiveCompact?.isReactiveCompactEnabled() && isAutoCompactEnabled())
+      !(
+        reactiveCompact?.isReactiveCompactEnabled() &&
+        isAutoCompactEnabled() &&
+        !isAutoCompactCircuitOpen(tracking)
+      )
     ) {
       const compactContext = {
         settingsSlot: toolUseContext.options.modelSettingsSlot,

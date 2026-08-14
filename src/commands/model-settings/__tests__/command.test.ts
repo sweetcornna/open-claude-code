@@ -225,3 +225,35 @@ describe('what bare /model-settings opens', () => {
     expect(output).toStartWith('Model settings (env still wins over these):')
   })
 })
+
+/**
+ * The panel shows what the user CONFIGURED, because that is the number they
+ * came here to edit — but a configured window the endpoint will not serve makes
+ * that number a silent misstatement about the session. The annotation is the
+ * only thing standing between "settings say 372k" and a session that compacts
+ * against 200k.
+ */
+describe('a configured window the model cannot serve is annotated', () => {
+  test('a value in the 200k-1M band shows what it was capped to', async () => {
+    userSettings = {}
+    const output = await run('opus context 372k')
+    expect(output).toContain('context=372k · capped to 200k by model')
+  })
+
+  test('the annotation follows the row into the panel', async () => {
+    userSettings = { modelSettings: { opus: { contextTokens: 372_000 } } }
+    const output = await run('show')
+    expect(output).toMatch(
+      /^\s+opus\s.*context=372k · capped to 200k by model/m,
+    )
+  })
+
+  test('a servable window is left unannotated', async () => {
+    userSettings = {}
+    // Below the model's window is a budget, not an overreach.
+    expect(await run('opus context 128k')).toContain('context=128k')
+    expect(await run('opus context 128k')).not.toContain('capped to')
+    // 1M on a 1M-capable model is the `[1m]` opt-in, so it is served as asked.
+    expect(await run('opus context 1m')).not.toContain('capped to')
+  })
+})

@@ -438,10 +438,37 @@ export type Attachment =
       level: 'high'
     }
   | {
+      /**
+       * Emitted by the tool dispatcher right after a Read tool_result whose
+       * whole-file content was auto-paginated by the token cap. Carries the
+       * "you only saw page 1, ask for page 2 like this" banner as a separate
+       * system-reminder so it is not mistaken for file content.
+       */
+      type: 'read_truncation_notice'
+      banner: string
+      toolUseID: string
+    }
+  | {
       type: 'deferred_tools_delta'
       addedNames: string[]
       addedLines: string[]
       removedNames: string[]
+      /**
+       * MCP servers whose connection is still in flight. Their tools do not
+       * exist in the pool yet, so without this the model reads "no such tool"
+       * as "capability absent" and gives up or invents a workaround.
+       */
+      pendingMcpServers?: string[]
+      /** MCP servers that need an OAuth authorization before any tool works. */
+      needsAuthMcpServers?: string[]
+      /** MCP servers that are configured but failed to connect. */
+      failedMcpServers?: { name: string; error?: string }[]
+      /**
+       * Names announced in an earlier delta whose tools went away and came
+       * back (server reconnect). Their description lines were already spelled
+       * out once, so the re-announcement is name-only.
+       */
+      readdedNames?: string[]
     }
   | {
       type: 'tool_search_usage_reminder'

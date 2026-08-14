@@ -8,6 +8,7 @@ import {
   isDeferredToolsDeltaEnabled,
   isSearchExtraToolsEnabledOptimistic,
   type DeferredToolsDeltaScanContext,
+  type DeferredToolsMcpState,
 } from '../tools/searchExtraTools.js'
 import {
   isDeferredTool,
@@ -29,7 +30,84 @@ import { filterDeniedAgents } from '../permissions/permissions.js'
 import { getSubscriptionType } from '../auth/auth.js'
 import { mcpInfoFromString } from '../../services/mcp/mcpStringUtils.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
+import { getIsNonInteractiveSession } from '../../bootstrap/state/flags.js'
 import type { Attachment } from './types.js'
+
+/**
+ * Killswitch for the failed-server section only. Failed servers are the one
+ * axis whose text quotes strings the endpoint produced, so it gets its own
+ * off-switch; pending and needs-auth carry only server names the user
+ * configured themselves.
+ */
+function shouldSurfaceFailedMcpServers(): boolean {
+  return !isEnvDefinedFalsy(process.env.CLAUDE_CODE_SURFACE_FAILED_MCP_SERVERS)
+}
+
+/**
+ * Third-party text (server-reported errors) that is about to be pasted into
+ * the prompt. Normalize, drop the characters that could fake structure, and
+ * cap the length so one broken server cannot dominate the context.
+ */
+const MCP_ERROR_MAX_CHARS = 200
+function sanitizeMcpDiagnostic(text: string): string {
+  const flattened = text
+    .normalize('NFKC')
+    // \p{Cc} rather than an explicit \u0000-\u001f range: same set, but it does
+    // not put control characters in a regex literal. Stripping them is the
+    // point — they are what would let a server-reported error forge line
+    // structure inside the system-reminder.
+    .replace(/\p{Cc}/gu, ' ')
+    .replace(/[<>"'`\u2018\u2019\u201c\u201d]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return flattened.length > MCP_ERROR_MAX_CHARS
+    ? `${flattened.slice(0, MCP_ERROR_MAX_CHARS)}\u2026`
+    : flattened
+}
+
+/**
+ * What the model needs to know about MCP servers that are not (yet) usable.
+ *
+ * needs-auth is reported only in non-interactive sessions: interactively the
+ * user can just run /mcp, and the rendered text tells the model to hand the
+ * problem back to the user, which is wrong advice when a dialog is one
+ * keystroke away.
+ */
+/**
+ * `nonInteractive` is a parameter rather than a straight
+ * getIsNonInteractiveSession() read so callers — tests especially — can state
+ * it instead of steering a process-global. Mocking `src/bootstrap/state.ts`
+ * penetrates to `src/bootstrap/state/flags.ts`, so a suite that mocks the
+ * barrel leaves setIsInteractive() writing to one STATE container while this
+ * module reads another: the flag silently refuses to move and the
+ * non-interactive branch is never exercised. Production passes nothing and
+ * keeps reading the global.
+ */
+function collectMcpState(
+  mcpClients: MCPServerConnection[] | undefined,
+  nonInteractive: boolean = getIsNonInteractiveSession(),
+): DeferredToolsMcpState | undefined {
+  if (!mcpClients) return undefined
+  const failed = shouldSurfaceFailedMcpServers()
+    ? mcpClients
+        .filter(c => c.type === 'failed')
+        .map(c => ({
+          name: sanitizeMcpDiagnostic(c.name),
+          ...(c.error !== undefined && {
+            error: sanitizeMcpDiagnostic(c.error),
+          }),
+        }))
+    : undefined
+  return {
+    pending: mcpClients.filter(c => c.type === 'pending').map(c => c.name),
+    ...(nonInteractive && {
+      needsAuth: mcpClients
+        .filter(c => c.type === 'needs-auth')
+        .map(c => c.name),
+    }),
+    ...(failed !== undefined && { failed }),
+  }
+}
 
 // Exported for compact.ts — the gate must be identical at both call sites.
 export function getDeferredToolsDeltaAttachment(
@@ -37,6 +115,8 @@ export function getDeferredToolsDeltaAttachment(
   model: string,
   messages: Message[] | undefined,
   scanContext?: DeferredToolsDeltaScanContext,
+  mcpClients?: MCPServerConnection[],
+  nonInteractive?: boolean,
 ): Attachment[] {
   if (!isDeferredToolsDeltaEnabled()) return []
   // These checks mirror the sync parts of isSearchExtraToolsEnabled — the
@@ -48,7 +128,12 @@ export function getDeferredToolsDeltaAttachment(
   // callable anyway.
   if (!isSearchExtraToolsEnabledOptimistic()) return []
   if (!isDeferredToolExecutionPathAvailable(tools)) return []
-  const delta = getDeferredToolsDelta(tools, messages ?? [], scanContext)
+  const delta = getDeferredToolsDelta(
+    tools,
+    messages ?? [],
+    scanContext,
+    collectMcpState(mcpClients, nonInteractive),
+  )
   if (!delta) return []
   return [{ type: 'deferred_tools_delta', ...delta }]
 }

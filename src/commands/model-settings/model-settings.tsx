@@ -9,6 +9,7 @@ import {
 } from '../../utils/model/modelTier.js';
 import { getTierDefaults } from '../../utils/model/tierDefaults.js';
 import { formatContextTokens, getTierOverride } from '../../utils/model/tierSettings.js';
+import { clampConfiguredContextWindow } from '../../utils/session/context.js';
 import { getSettingsForSource } from '../../utils/settings/settings.js';
 import { getDefaultMainLoopModel, getMainLoopModel } from '../../utils/model/model.js';
 import { parseUserSpecifiedModel } from '../../utils/model/model.js';
@@ -16,6 +17,31 @@ import { parseArgs, resetTierSettings, usage, writeTierSettings } from './state.
 import { ModelTierSetup } from './tierWizard.js';
 
 const COMMON_HELP_ARGS = ['help', '--help', '-h', '?'];
+
+/**
+ * `1M`, or `1M · capped to 200k` when the endpoint will not serve what is
+ * configured.
+ *
+ * The configured number stays the subject: it is what the user came here to
+ * edit, and replacing it with the effective window would hide the value they
+ * have to change. But showing it alone is a silent misstatement — this panel is
+ * where somebody reads "372k" and plans a session that gets 200k. The startup
+ * notice is not enough on its own: it scrolls away, and this is the surface a
+ * user opens on purpose, days later.
+ *
+ * Annotated regardless of whether the number came from a setting or from the
+ * factory default. The startup notice suppresses the default case because it
+ * would fire on every Anthropic session on day one; a panel the user explicitly
+ * opened has no such problem, and Opus defaulting to 1M while the session runs
+ * at 200k is exactly the confusion worth answering here. Wording follows
+ * upstream's `· capped to X by model`.
+ */
+function describeContextTokens(model: string, tokens: number): string {
+  const served = clampConfiguredContextWindow(model, tokens);
+  return served < tokens
+    ? `${formatContextTokens(tokens)} · capped to ${formatContextTokens(served)} by model`
+    : formatContextTokens(tokens);
+}
 
 /** Human-readable summary of what each tier resolves to right now. */
 function describeAll(): string {
@@ -34,7 +60,7 @@ function describeAll(): string {
     ].filter(Boolean);
     const suffix = marks.length > 0 ? `  (${marks.join(', ')})` : '  (defaults)';
     lines.push(
-      `  ${slot.padEnd(7)} ${model.padEnd(24)} effort=${effort.padEnd(6)} context=${formatContextTokens(tokens)}${suffix}`,
+      `  ${slot.padEnd(7)} ${model.padEnd(24)} effort=${effort.padEnd(6)} context=${describeContextTokens(model, tokens)}${suffix}`,
     );
     if (tier) models.set(model, [...(models.get(model) ?? []), tier]);
   }
@@ -186,7 +212,7 @@ function summarize(tier: ModelSettingsSlot): string {
   const override = getTierOverride(tier);
   const effort = override?.effort ?? defaults.effort;
   const tokens = override?.contextTokens ?? defaults.contextTokens;
-  return `effort=${effort} context=${formatContextTokens(tokens)}`;
+  return `effort=${effort} context=${describeContextTokens(model, tokens)}`;
 }
 
 // Referenced so the current main-loop model is resolvable from this module for

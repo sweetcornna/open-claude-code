@@ -2,7 +2,9 @@ import { afterAll, beforeEach, describe, expect, test } from 'bun:test'
 import {
   CONTEXT_1M,
   CONTEXT_200K,
+  CONTEXT_256K,
   CONTEXT_272K,
+  CONTEXT_500K,
   getProviderFamily,
   getTierDefaults,
 } from '../tierDefaults.js'
@@ -105,11 +107,71 @@ describe('getTierDefaults', () => {
     // `high` is what services/api/{gemini,grok}/reasoning.ts define as "send
     // what the provider would have done anyway", so turning the mapping on does
     // not silently re-tune every existing session.
-    for (const model of ['gemini-3.1-pro', 'grok-3-mini-fast']) {
-      expect(getTierDefaults(model)).toEqual({
-        effort: 'high',
-        contextTokens: CONTEXT_200K,
-      })
+    //
+    // Effort only — the context axis is asserted below. Bundling the two here
+    // is how a flat 200k window rode in on the effort argument in the first
+    // place, and neither family has ever served 200k.
+    for (const model of ['gemini-3.1-pro', 'grok-3-mini-fast', 'grok-4.6']) {
+      expect(getTierDefaults(model).effort).toBe('high')
+    }
+  })
+
+  test('Gemini text models get the 1M window they actually serve', () => {
+    // Every generative Gemini text model since 1.5 publishes 1,048,576 input
+    // tokens. The old flat 200k made each of these sessions auto-compact at
+    // ~15% of the capacity it was paying for.
+    for (const model of [
+      'gemini-1.5-pro',
+      'gemini-2.0-flash',
+      'gemini-2.5-pro',
+      'gemini-2.5-flash-lite',
+      'gemini-3.1-pro-preview',
+      'gemini-3.7-flash',
+    ]) {
+      expect(getTierDefaults(model).contextTokens).toBe(CONTEXT_1M)
+    }
+  })
+
+  test('Gemini ids that are not long-context text models keep 200k', () => {
+    // A prefix rule that swallowed these would hand a 1M window to a 2k model.
+    for (const model of [
+      'gemini-embedding-001',
+      'gemini-3-pro-image',
+      'gemini-3.1-flash-image-preview',
+      // Pre-versioned 1.0 ids are not covered by the rule either.
+      'gemini-pro',
+    ]) {
+      expect(getTierDefaults(model).contextTokens).toBe(CONTEXT_200K)
+    }
+  })
+
+  test('Grok windows are per generation, not per family', () => {
+    const cases: ReadonlyArray<readonly [string, number]> = [
+      ['grok-4.6', CONTEXT_500K],
+      ['grok-4.5', CONTEXT_500K],
+      ['grok-4.3', CONTEXT_1M],
+      ['grok-4.20-0309-reasoning', CONTEXT_1M],
+      ['grok-4.20-multi-agent-0309', CONTEXT_1M],
+      // Retired, redirected to grok-4.3 — its window, not their old 2M.
+      ['grok-4-fast-reasoning', CONTEXT_1M],
+      ['grok-4-1-fast-non-reasoning', CONTEXT_1M],
+      ['grok-4.1-fast-reasoning', CONTEXT_1M],
+      ['grok-4-0709', CONTEXT_256K],
+      ['grok-4', CONTEXT_256K],
+      ['grok-build-0.1', CONTEXT_256K],
+      ['grok-code-fast-1', CONTEXT_256K],
+      // Unverifiable and redirected: left off the table on purpose.
+      ['grok-3', CONTEXT_200K],
+      ['grok-3-mini', CONTEXT_200K],
+      // An id no table has heard of stays conservative rather than inheriting
+      // a sibling generation's number.
+      ['grok-9-turbo', CONTEXT_200K],
+    ]
+    for (const [model, tokens] of cases) {
+      expect([model, getTierDefaults(model).contextTokens]).toEqual([
+        model,
+        tokens,
+      ])
     }
   })
 

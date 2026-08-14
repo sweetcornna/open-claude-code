@@ -52,3 +52,22 @@ export function shouldAppendEphemeralDeferredToolList(
 ): boolean {
   return useSearchExtraTools && !isDeferredToolsDeltaEnabled()
 }
+
+/**
+ * How many entries one announcement spells out in full.
+ *
+ * Applies to the tool description lines and to each MCP-server section
+ * (pending / needs-auth / failed): a 300-tool, 20-server setup would otherwise
+ * emit a system-reminder longer than most files the model reads.
+ *
+ * Only the RENDERED view is capped. `addedNames` stays complete because it is
+ * the bookkeeping the next scan diffs against, and dropping entries from it
+ * would re-announce the same tools every turn. Tools past the cap are reached
+ * through keyword/`discover:` search instead of `select:`; the renderer says so.
+ *
+ * Lives in this zero-import leaf because both the producer
+ * (`src/utils/tools/searchExtraTools.ts`) and the renderer
+ * (`src/utils/messages/attachmentNormalize.ts`) need it, and neither should
+ * take an edge on the other.
+ */
+export const DEFERRED_DELTA_LIST_CAP = 30

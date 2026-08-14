@@ -126,6 +126,34 @@ export function saveGoal(
 }
 
 /**
+ * Record that this run already offered to auto-continue the interrupted turn
+ * ending at `resumeAnchorUuid`.
+ *
+ * Written the moment the offer is acted on, not when it finishes: the case
+ * this protects against is the run dying before it writes anything, which is
+ * exactly when a completion-time write would never happen. If the run does
+ * produce messages the transcript tail moves past the anchor and the entry
+ * stops matching on its own — no tombstone needed.
+ *
+ * Not cached on Project and not re-appended by reAppendSessionMetadata: unlike
+ * a title or a goal, a stale anchor pushed past a compaction boundary is
+ * harmless (it just stops suppressing), while a re-appended one could outlive
+ * the tail it describes.
+ */
+export function saveResumeAnchor(
+  sessionId: UUID,
+  resumeAnchorUuid: UUID,
+  fullPath?: string,
+): void {
+  const resolvedPath = fullPath ?? getTranscriptPathForSession(sessionId)
+  appendEntryToFile(resolvedPath, {
+    type: 'resume-anchor',
+    sessionId,
+    resumeAnchorUuid,
+  })
+}
+
+/**
  * Persist a "goal cleared" tombstone so a future --resume cannot
  * resurrect the goal from a prior `goal` entry. Also drops the
  * in-memory cache for the current session.

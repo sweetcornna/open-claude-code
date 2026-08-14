@@ -16,12 +16,19 @@
 | GPT（含 `o1`/`o3`/`o4-mini` 这条 reasoning 线） | `xhigh` | 272k |
 | Claude opus / fable | `xhigh` | 1M |
 | Claude sonnet / haiku | `xhigh` | 200k |
-| Gemini / Grok | `high` | 200k |
+| Gemini（认得出的文本模型） | `high` | 1M |
+| Grok | `high` | 按代，见下表 |
 | 其他（GLM / Qwen / Kimi / 本地 vLLM …） | `xhigh` | 200k |
 
 Claude 的 sonnet 和 haiku **只降窗口、不降 effort**。那条例外针对的是能力（这两档没有 1M 档位），不是偏好（该想多少还想多少）。
 
 Gemini 和 Grok 取 `high`，因为它们是唯二**没有五档词汇**、要靠 occ 映射到别的参数上的家族（分别是思考预算和两档梯子）。`high` 被这两个映射定义为**恒等档**——发出去的东西和 occ 开始介入之前完全一样——所以打开映射不会悄悄把存量会话重新调过一遍。见「effort 怎么落到各家协议上」。
+
+**那条恒等档的论证只管 effort。** 它一度被顺手套到了上下文轴上：这两家的窗口曾经硬编码 200k，而 200k 在这里不是恒等值，是错 5 倍——每个 Gemini / Grok 会话都在真实容量的 15% 处 autocompact。两根轴现在分开决定：
+
+- **Gemini** 自 1.5 起每一个生成式文本模型都是 1,048,576 输入 token（2.0 Flash、2.5 Pro/Flash/Flash-Lite、整条 3.x 线），所以这里用**版本前缀规则**而不是列表——列表会过期（3-pro-preview 和 2.0-flash 上线半年内就退役了），这个数字四代没动过。例外全写在 id 里：embedding 模型 2k–8k、image 模型 64k–128k，靠 id 里的 `embedding` / `image` 排除。取整到 1M 而不是 1,048,576：**少估只是早一点压缩，多估是硬 prompt-too-long**。
+- **Grok** 一款一款列（docs.x.ai）：`grok-build-0.1` / `grok-code-fast*` 256k，`grok-4.5`·`grok-4.6` 500k，`grok-4.20`·`grok-4.3` 1M，已退役并重定向到 grok-4.3 的 `grok-4-fast*` / `grok-4.1-fast*` 跟着算 1M，`grok-4` / `grok-4-0709` 256k。**没有家族兜底规则**：xAI 的窗口在活跃模型之间真的差 4 倍，猜一个数在多数模型上都是错的，所以表里没有的 `grok-*` 保持 200k 兜底。`grok-3` 系故意留空——它的文档页已下线、数字无法从一手来源确认，而且请求已被重定向到 grok-4.3，真实行为不由这张表决定。**这里的取舍方向不是口味问题：多估的后果是硬失败（上游直接拒收），少估的后果是早压缩（浪费但可用）**，两者不对称，所以一手来源确认不了的一律往「还能用」那边落。
+- xAI 只公布一个「context window」数字，没说是纯输入还是输入+输出。occ 按**纯输入预算**用它，这是保守读法，而且 occ 还会在此之上再扣掉预留的输出 token。
 
 两道硬约束由调用方施加，不在默认表里：
 
@@ -29,6 +36,29 @@ Gemini 和 Grok 取 `high`，因为它们是唯二**没有五档词汇**、要�
 - 1M 对 **Anthropic 系**要求模型 id 带 `[1m]` 后缀。后缀是 beta 头 `context-1m-2025-08-07` 的唯一来源；只把本地记账改成 1M 而不发头，结果是 API 在 200k 就拒，而 auto-compact 以为还有 800k 余量从不触发——一次本该压缩的对话直接变成 prompt too long。`apply1mContextOptIn` 会在「配置要 1M 且模型支持」时补上后缀。
 
   **这道闸门是关于 Anthropic 模型的事实，不是关于数字的**，所以对别家不成立：第三方 id 没有 beta 头可漏，而指着那个端点的用户比一张从没听说过该 checkpoint 的能力表更清楚它的窗口。此前对所有模型一律 clamp，等于让「给这个档位设最大上下文」在**每一家 1M 模型不叫 Claude 的 provider 上都静默失效**。判定见 `supportsContextWindow()`，`/model` 的窗口梯子也用它筛选可选项。
+
+## 配置的窗口大于端点真的给的窗口时
+
+**Anthropic 只提供两个窗口：200k，和带 `context-1m` beta 头的 1M。中间什么都没有。** 而 `contextTokens` 接受任意数字，闸门此前只设在 1M 那一处，于是 200k–1M 之间整段是**无人管的越权带**：`claude-opus-5` 配 372k → 本地按 372k 记账 → 因为 `< 1M` 不加 `[1m]` → 不发 beta 头 → 服务端仍是 200k。结果是 auto-compact 瞄着 ~352k，而 API 在 200k 就 `prompt is too long`——本该压缩的地方变成硬失败。
+
+现在由 `clampConfiguredContextWindow()`（`src/utils/session/context.ts`）统一收口，规则三条：
+
+1. **配得比端点小是预算，不是越权**，原样保留（1M 模型上配 128k 就是早点压缩）。
+2. **Anthropic 系 id 配到不可能被服务的值就下调**到实际能拿到的那一档。要 ≥1M 且模型支持 1M 时不下调——因为那恰好就是 `[1m]` 的开关，`apply1mContextOptIn` 会把后缀补上，头会跟着请求发出去。
+3. **第三方 id 一律不 clamp**。理由同上：没有 beta 头可漏，也没有能力表知道那个 checkpoint。这里的纠正手段依然是 `CLAUDE_CODE_MAX_CONTEXT_TOKENS`。
+
+`supportsContextWindow(model, n)` 现在的定义就是「clamp 会不会改动 n」，所以 `/model` 梯子提供的档位和记账用的数字**不可能对不上**：裸 `claude-opus-5` 上 272k / 512k 不再出现在梯子里，1M 仍在（选它会产生 `[1m]`）；`claude-opus-5[1m]` 上全部档位都在。
+
+**下调不是静默的**，两个地方都会说：
+
+- **启动时一条一次性提示**（`src/utils/terminal/contextWindowNotice.ts`，走 StatusNotices）说明被下调到了多少、以及两条出路。只有**用户自己配的**两个来源（`settings.modelSettings` / 会话内改动）会触发；出厂默认那次下调（opus/fable 默认 1M 但没 `[1m]`）是 occ 自己的选择，不提示。
+- **`/model-settings` 面板**在配置值后面缀 `· capped to 200k by model`（文案对齐上游）。配置值仍是可编辑的主体——把它换成生效值等于把用户要改的那个数藏起来。这里**不区分来源**，出厂默认那行也标：启动提示压制默认是因为会天天响，而面板是用户主动打开的，「Opus 显示 1M 而会话跑 200k」恰恰是这里最该回答的疑惑。
+
+**`/model` 的 Space 循环也跟着走。** 已存一个不可服务的值（比如裸 Claude id 上的 372k）时，第一跳落到**不大于它的最大可服务档**（→ 200k），而不是梯子最底（128k）：纠正一个不可用的窗口不该顺手再砍掉三分之一可用的窗口。
+
+**`CLAUDE_CODE_MAX_CONTEXT_TOKENS` 不参与 clamp。** 上游把它的对应物门控在 `DISABLE_COMPACT` 已设或模型名不以 `claude-` 开头之后；occ 有意分叉——这里它被定义为对所有用户生效的最高优先级纠正手段，第三方端点用户靠它救命，加门控会静默打断存量配置。
+
+**认不出的模型会说出来。** 所有探测都不命中、且 id 不属于任何 occ 有表的家族时，那个 200k 是猜的而不是事实，启动时提示一次并指向 `CLAUDE_CODE_MAX_CONTEXT_TOKENS`。用户已经回答过这个问题（env 或分层配置）就不提示；`CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_NOTICE=1` 关掉。
 
 ## 优先级
 

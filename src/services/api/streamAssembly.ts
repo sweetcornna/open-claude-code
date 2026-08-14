@@ -18,6 +18,7 @@ import { sleep } from '../../utils/process/sleep.js'
 import {
   isAPIErrorReplayable,
   isRetryableAPIError,
+  NonRetryableError,
 } from './retryClassification.js'
 import { getOpenAIRetryDelay, resolveOpenAIMaxRetries } from './openai/retry.js'
 
@@ -100,6 +101,42 @@ function finalizeInterruptedAttempt(
   ]
 }
 
+/**
+ * The failure a caller sees when a stream dies after the reader has already
+ * been shown output.
+ *
+ * The partial blocks stay — they are on the terminal and on the SDK stream
+ * already, and dropping them would replace one silence with another. What this
+ * adds is the sentence saying they are partial. Without it, the synthesized
+ * `message_delta` + `message_stop` below made a truncated answer
+ * indistinguishable from a completed one: the turn simply ended early, and a
+ * `tool_use` block whose argument JSON was cut mid-object reached
+ * `normalizeContentFromAPI`, which cannot parse it and substitutes `{}`.
+ *
+ * Modelled on the official CLI, which finalizes the same way and then yields
+ * "Connection lost mid-response. The response above may be incomplete."
+ *
+ * `NonRetryableError` (not a bare Error) so no ladder above re-sends a request
+ * whose output has already been delivered, and so the SDK error category is
+ * `server_error` rather than being guessed from the prose.
+ */
+function interruptedAfterOutputError(
+  error: unknown,
+  toolUseWasOpen: boolean,
+): NonRetryableError {
+  const cause =
+    error instanceof Error ? error.message : String(error ?? 'unknown error')
+  const toolNote = toolUseWasOpen
+    ? ' A tool call was cut off mid-arguments, so its input is incomplete.'
+    : ''
+  // The cause is spelled into the message rather than attached: describeAPIError
+  // reports the innermost `cause`'s message, which would bury this sentence.
+  return new NonRetryableError(
+    `Connection lost mid-response. The response above may be incomplete.${toolNote} Cause: ${cause}`,
+    { category: 'server_error' },
+  )
+}
+
 export async function* retryThirdPartyEventStream(params: {
   create: () => Promise<AsyncIterable<BetaRawMessageStreamEvent>>
   signal: AbortSignal
@@ -122,6 +159,9 @@ export async function* retryThirdPartyEventStream(params: {
     let sawMessageStart = false
     let sawMessageStop = false
     let hasToolUse = false
+    // Index of a tool_use block opened but not yet closed. While this is set,
+    // the block's accumulated argument JSON is a prefix, not a document.
+    let openToolUseIndex = -1
     let stream: AsyncIterable<BetaRawMessageStreamEvent>
     try {
       stream = await params.create()
@@ -135,11 +175,18 @@ export async function* retryThirdPartyEventStream(params: {
           lastContentIndex = Math.max(lastContentIndex, event.index)
         }
         if (
+          event.type === 'content_block_stop' &&
+          event.index === openToolUseIndex
+        ) {
+          openToolUseIndex = -1
+        }
+        if (
           event.type === 'content_block_start' &&
           (event.content_block.type === 'tool_use' ||
             event.content_block.type === 'server_tool_use')
         ) {
           hasToolUse = true
+          openToolUseIndex = event.index
         }
         if (event.type === 'message_start') sawMessageStart = true
         if (event.type === 'message_stop') sawMessageStop = true
@@ -160,9 +207,15 @@ export async function* retryThirdPartyEventStream(params: {
         )) {
           yield event
         }
-        return
+        throw interruptedAfterOutputError(error, openToolUseIndex >= 0)
       }
-      if (!isAPIErrorReplayable(error) && commitment === 'none') {
+      // Not gated on `commitment === 'none'` any more. An adapter stamps
+      // `replayable: false` the moment output crosses its own visibility
+      // barrier, and the Responses adapter's barrier includes reasoning text —
+      // which arrives here as `thinking_delta`, i.e. commitment 'thinking'.
+      // Re-running that stream re-renders reasoning the reader cannot un-see
+      // and yields a second AssistantMessage for the same response.
+      if (!isAPIErrorReplayable(error)) {
         throw error
       }
       const retry =

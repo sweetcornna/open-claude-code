@@ -42,6 +42,7 @@ const METADATA_TYPE_MARKERS = [
   '"type":"goal"',
   '"type":"goal-cleared"',
   '"type":"pr-link"',
+  '"type":"resume-anchor"',
 ]
 
 const METADATA_MARKER_BUFS = METADATA_TYPE_MARKERS.map(m => Buffer.from(m))
@@ -410,6 +411,7 @@ export async function loadTranscriptFile(
   modes: Map<UUID, string>
   worktreeStates: Map<UUID, PersistedWorktreeSession | null>
   goals: Map<UUID, GoalState>
+  resumeAnchors: Map<UUID, UUID>
   fileHistorySnapshots: Map<UUID, FileHistorySnapshotMessage>
   attributionSnapshots: Map<UUID, AttributionSnapshotMessage>
   contentReplacements: Map<UUID, ContentReplacementRecord[]>
@@ -429,6 +431,7 @@ export async function loadTranscriptFile(
   const modes = new Map<UUID, string>()
   const worktreeStates = new Map<UUID, PersistedWorktreeSession | null>()
   const goals = new Map<UUID, GoalState>()
+  const resumeAnchors = new Map<UUID, UUID>()
   const fileHistorySnapshots = new Map<UUID, FileHistorySnapshotMessage>()
   const attributionSnapshots = new Map<UUID, AttributionSnapshotMessage>()
   const contentReplacements = new Map<UUID, ContentReplacementRecord[]>()
@@ -527,6 +530,8 @@ export async function loadTranscriptFile(
           goals.set(entry.sessionId, entry.state)
         } else if (entry.type === 'goal-cleared' && entry.sessionId) {
           goals.delete(entry.sessionId)
+        } else if (entry.type === 'resume-anchor' && entry.sessionId) {
+          resumeAnchors.set(entry.sessionId, entry.resumeAnchorUuid)
         } else if (entry.type === 'pr-link' && entry.sessionId) {
           prNumbers.set(entry.sessionId, entry.prNumber)
           prUrls.set(entry.sessionId, entry.prUrl)
@@ -588,6 +593,8 @@ export async function loadTranscriptFile(
         goals.set(entry.sessionId, entry.state)
       } else if (entry.type === 'goal-cleared' && entry.sessionId) {
         goals.delete(entry.sessionId)
+      } else if (entry.type === 'resume-anchor' && entry.sessionId) {
+        resumeAnchors.set(entry.sessionId, entry.resumeAnchorUuid)
       } else if (entry.type === 'pr-link' && entry.sessionId) {
         prNumbers.set(entry.sessionId, entry.prNumber)
         prUrls.set(entry.sessionId, entry.prUrl)
@@ -715,6 +722,7 @@ export async function loadTranscriptFile(
     modes,
     worktreeStates,
     goals,
+    resumeAnchors,
     fileHistorySnapshots,
     attributionSnapshots,
     contentReplacements,
@@ -734,6 +742,7 @@ export async function loadSessionFile(sessionId: UUID): Promise<{
   agentSettings: Map<UUID, string>
   worktreeStates: Map<UUID, PersistedWorktreeSession | null>
   goals: Map<UUID, GoalState>
+  resumeAnchors: Map<UUID, UUID>
   fileHistorySnapshots: Map<UUID, FileHistorySnapshotMessage>
   attributionSnapshots: Map<UUID, AttributionSnapshotMessage>
   contentReplacements: Map<UUID, ContentReplacementRecord[]>

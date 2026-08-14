@@ -384,6 +384,27 @@ export function findChinaProviderByBaseURL(
 }
 
 /**
+ * A model id reduced to the checkpoint it names.
+ *
+ * Aggregators and gateways re-spell the same checkpoint two ways, and a strict
+ * equality match saw neither: OpenRouter-style vendor prefixes (`zhipu/glm-4.7`,
+ * `z-ai/glm-4.6`) and variant tags (`glm-4.6:free`, `…:exacto`). Both used to
+ * fall through to the flat 200k fallback, which is wrong in both directions
+ * here — GLM's catalog runs 203K–205K and MiniMax's runs to 1M.
+ *
+ * Deliberately NOT a substring or prefix match: `glm-4.7` and `glm-4.7-flash`
+ * are different checkpoints with different windows, and guessing between them
+ * is how a 1M window ends up on a 128k model.
+ */
+function checkpointId(modelId: string): string {
+  const trimmed = modelId.trim().toLowerCase()
+  if (!trimmed) return ''
+  const withoutVendor = trimmed.slice(trimmed.lastIndexOf('/') + 1)
+  const tag = withoutVendor.indexOf(':')
+  return tag === -1 ? withoutVendor : withoutVendor.slice(0, tag)
+}
+
+/**
  * The real context window for a preset model, in tokens.
  *
  * One API key exposes the provider's whole catalog, and those catalogs mix
@@ -395,11 +416,11 @@ export function findChinaProviderByBaseURL(
 export function getChinaProviderContextWindow(
   modelId: string,
 ): number | undefined {
-  const trimmed = modelId.trim().toLowerCase()
-  if (!trimmed) return undefined
+  const target = checkpointId(modelId)
+  if (!target) return undefined
   for (const provider of CHINA_LLM_PROVIDERS) {
     for (const model of provider.models) {
-      if (model.id.toLowerCase() === trimmed) {
+      if (checkpointId(model.id) === target) {
         return parseContextWindowTokens(model.contextWindow)
       }
     }

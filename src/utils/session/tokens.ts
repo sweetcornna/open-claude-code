@@ -253,7 +253,13 @@ export function tokenCountWithEstimation(messages: readonly Message[]): number {
   while (i >= 0) {
     const message = messages[i]
     const usage = message ? getTokenUsage(message) : undefined
-    if (message && usage) {
+    // Skip placeholder usage (all zeros), exactly as getCurrentUsage does.
+    // Third-party adapters seed usage with {0,0,0,0} and fill it from the
+    // stream's terminal event, so a stream that ends early leaves a record
+    // carrying a REAL model id and no counts — getTokenUsage's synthetic-model
+    // filter does not catch those. Anchoring there reports a ~0 context and
+    // silently disables autocompact for the rest of the turn.
+    if (message && usage && getTokenCountFromUsage(usage) > 0) {
       // Walk back past any earlier sibling records split from the same API
       // response (same message.id) so interleaved tool_results between them
       // are included in the estimation slice.

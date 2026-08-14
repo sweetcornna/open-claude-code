@@ -18,6 +18,7 @@ import {
   getClaudeAIOAuthTokens,
   handleOAuth401Error,
   isClaudeAISubscriber,
+  isEnterpriseSubscriber,
 } from '../../utils/auth/auth.js'
 import { isEnvTruthy } from '../../utils/config/envUtils.js'
 import { errorMessage } from '../../utils/runtime/errors.js'
@@ -266,7 +267,8 @@ export class FallbackTriggeredError extends Error {
       | 'model_not_found'
       | 'permission_denied'
       | 'server_error'
-      | 'overloaded' = 'overloaded',
+      | 'overloaded'
+      | 'last_resort' = 'overloaded',
     public readonly originalError?: unknown,
   ) {
     super(`Model fallback triggered: ${originalModel} -> ${fallbackModel}`)
@@ -367,7 +369,12 @@ export async function* withRetry<T>(
         fallbackReason &&
         options.fallbackModel &&
         options.fallbackModel !== options.model &&
-        !isPersistentRetryEnabled()
+        // Only the capacity reason defers to the watchdog. Waiting out a 5xx
+        // is precisely what unattended mode exists for, but a 404/403 on the
+        // model id is a verdict, not a queue: no amount of waiting turns a
+        // retired or unentitled model into an available one, so an unattended
+        // run has to switch or it hard-fails on a stale `--model`.
+        (fallbackReason !== 'server_error' || !isPersistentRetryEnabled())
       ) {
         throw new FallbackTriggeredError(
           options.model,
@@ -497,6 +504,26 @@ export async function* withRetry<T>(
       // transport failures and provider-synthesised errors alike.
       const verdict = retryVerdict(error)
       if (!verdict.retryable) {
+        // Last resort: this model cannot serve the request and no retry will
+        // change that, but a fallback model might. Only reached for failures
+        // that are not about the account, the request body or the context —
+        // see lastResortFallbackModel.
+        const lastResortModel = lastResortFallbackModel(error, options)
+        if (lastResortModel) {
+          logEvent('tengu_api_fallback_last_resort', {
+            status: (error as APIError).status,
+            errorType: (error as APIError)
+              .type as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+            provider: getAPIProviderForStatsig(),
+            fastMode: retryContext.fastMode ?? false,
+          })
+          throw new FallbackTriggeredError(
+            options.model,
+            lastResortModel,
+            'last_resort',
+            error,
+          )
+        }
         throw new CannotRetryError(error, retryContext)
       }
       const attemptBudget = maxRetries
@@ -780,6 +807,68 @@ function modelFallbackReason(
   return undefined
 }
 
+/**
+ * Statuses that say the problem follows the account or the request, not the
+ * model — so swapping models cannot help and would only spend another request
+ * to learn the same thing.
+ *
+ * 404 is on the list even though a 404 naming a model already triggers the
+ * `model_not_found` fallback above: what is left here is the gateway-level 404
+ * that `queryModel` answers by retrying the same model without streaming.
+ * Handing that one to a fallback model would pre-empt a recovery that works.
+ */
+const LAST_RESORT_BLOCKING_STATUSES = new Set([401, 403, 404, 407, 413, 429])
+
+/**
+ * Wording for failures a different model would reproduce verbatim: the context
+ * no longer fits, the account cannot pay, the org is switched off.
+ *
+ * Deliberately narrower than `errors.ts`'s `isContextOverflowErrorText`, which
+ * also recognises third-party phrasings — importing it here closes an import
+ * cycle, and this ladder only ever sees the Anthropic wire anyway.
+ */
+const MODEL_INDEPENDENT_MESSAGE_PATTERN =
+  /prompt is too long|input length and `?max_tokens`? exceed context limit|credit balance is too low|organization has been disabled/i
+
+function isModelIndependentFailure(error: APIError): boolean {
+  if (
+    error.status !== undefined &&
+    LAST_RESORT_BLOCKING_STATUSES.has(error.status)
+  ) {
+    return true
+  }
+  if (error.type === 'billing_error') return true
+  if (isFastModeNotEnabledError(error)) return true
+  return MODEL_INDEPENDENT_MESSAGE_PATTERN.test(error.message ?? '')
+}
+
+/**
+ * The fallback model to switch to for an error the ladder has just refused.
+ *
+ * Without this, a configured fallback only ever engaged for the three shapes
+ * `modelFallbackReason` recognises plus repeated 529s; every other permanent
+ * failure ended the turn with the fallback list untouched. Returning a model
+ * here is what makes `--fallback-model` mean "try the next one" rather than
+ * "try the next one, but only for these four errors".
+ *
+ * Compatible with the ordered `fallbackModels` list: `options.fallbackModel`
+ * is already the single entry query.ts armed this attempt with, and the
+ * FallbackTriggeredError it receives advances `nextFallbackIndex`, so a
+ * fallback that fails the same way walks on to the one after it.
+ */
+function lastResortFallbackModel(
+  error: unknown,
+  options: RetryOptions,
+): string | undefined {
+  if (!(error instanceof APIError) || error.status === undefined) {
+    return undefined
+  }
+  if (!options.fallbackModel || options.fallbackModel === options.model) {
+    return undefined
+  }
+  return isModelIndependentFailure(error) ? undefined : options.fallbackModel
+}
+
 // TODO: Replace with a response header check once the API adds a dedicated
 // header for fast-mode rejection (e.g., x-fast-mode-rejected). String-matching
 // the error message is fragile and will break if the API wording changes.
@@ -910,6 +999,75 @@ async function recoverCredentialsForNextRequest(error: unknown): Promise<void> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Quota 429s versus throttle 429s
+//
+// Both arrive as `429`, and only the headers tell them apart. A throttle is a
+// "come back in a moment" that the ladder exists to outlast. A quota rejection
+// is the plan's window being spent: no amount of waiting inside this turn makes
+// it come back, and `src/services/api/errors.ts` already has the copy that says
+// so ("You've reached your usage limit · resets 3pm"). Retrying one only delays
+// that sentence by the whole ladder — up to ~10 minutes when the server also
+// sends `Retry-After: 60`, because getRetryDelay honours the header.
+//
+// The gate is subscriber-scoped on purpose: an API-key/PAYG seat has no unified
+// window, and an enterprise seat's limits are administered elsewhere, so for
+// those two a 429 is a throttle and stays retryable.
+// ---------------------------------------------------------------------------
+
+/**
+ * The `anthropic-ratelimit-unified-*` headers that only appear on a rejection
+ * bound to a subscription window. `-reset` is deliberately NOT in this list:
+ * it also rides along on plain throttles, and treating it as a quota marker
+ * would strand per-minute limits the ladder can wait out.
+ */
+const UNIFIED_QUOTA_HEADERS = [
+  'anthropic-ratelimit-unified-representative-claim',
+  'anthropic-ratelimit-unified-overage-status',
+  'anthropic-ratelimit-unified-overage-disabled-reason',
+] as const
+
+function header(error: APIError, name: string): string | null | undefined {
+  return error.headers?.get?.(name)
+}
+
+function isUnifiedQuotaRejection(error: APIError): boolean {
+  if (error.status !== 429) return false
+  if (!isClaudeAISubscriber() || isEnterpriseSubscriber()) return false
+  return UNIFIED_QUOTA_HEADERS.some(name => {
+    const value = header(error, name)
+    return value !== null && value !== undefined
+  })
+}
+
+/**
+ * A 429 that says the account has to buy extra usage before this request can
+ * succeed. Applies to every seat shape, not just subscriptions.
+ *
+ * The two exempt `overage-disabled-reason` values are Anthropic's own
+ * "we could not check your credit state" answers, so those stay retryable.
+ */
+function isExtraUsageRequiredRejection(error: APIError): boolean {
+  if (error.status !== 429) return false
+  const body = error.error as
+    | { error?: { details?: { error_code?: unknown } } }
+    | undefined
+  const message = error.message?.toLowerCase() ?? ''
+  const creditsRequired =
+    body?.error?.details?.error_code === 'credits_required' ||
+    message.includes('usage credits are required') ||
+    message.includes('extra usage is required')
+  if (!creditsRequired) return false
+  const disabledReason = header(
+    error,
+    'anthropic-ratelimit-unified-overage-disabled-reason',
+  )
+  return (
+    disabledReason !== 'fetch_error' &&
+    disabledReason !== 'org_level_disabled_until'
+  )
+}
+
 /**
  * The classifier's verdict for an `APIError`, plus the decisions that depend on
  * things the error text cannot express.
@@ -923,10 +1081,25 @@ function apiErrorVerdict(error: APIError): RetryVerdict {
     return { ...classified, retryable: false, persistence: 'permanent' }
   }
 
+  // Ordered ahead of the watchdog override to match the official predicate:
+  // waiting out a window is what persistent capacity mode is for, but no
+  // window reopens on a balance that has to be topped up.
+  if (isExtraUsageRequiredRejection(error)) {
+    return { ...classified, retryable: false, persistence: 'permanent' }
+  }
+
   // Persistent capacity mode intentionally overrides the server's long-lived
   // x-should-retry:false response and waits for the advertised reset window.
   if (isPersistentRetryEnabled() && isTransientCapacityError(error)) {
     return transiently(classified)
+  }
+
+  // Placed after the classifier so it also overrules an `x-should-retry: true`
+  // header, which classifyRetryableAPIError honours before it ever looks at the
+  // status. The official predicate applies the same subscriber test to that
+  // directive and to the bare 429.
+  if (isUnifiedQuotaRejection(error)) {
+    return { ...classified, retryable: false, persistence: 'permanent' }
   }
 
   return classified

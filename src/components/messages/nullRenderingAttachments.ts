@@ -31,6 +31,9 @@ const NULL_RENDERING_TYPES = [
   'team_context',
   'todo_reminder',
   'context_efficiency',
+  // Model-facing only: the Read tool's own result row already shows the line
+  // count, so a second visible line would just be noise.
+  'read_truncation_notice',
   'deferred_tools_delta',
   'tool_search_usage_reminder',
   'mcp_instructions_delta',
