@@ -1,7 +1,7 @@
 ---
 title: "システムプロンプト — 組み立て、ブロック化、キャッシュ制御"
-description: "Claude Code のシステムプロンプトの作られ方。string[] のパイプライン、静的／動的の境界、3 つのキャッシュモード、TTL の決定、そして git の状態と CLAUDE.md が別経路で注入される仕組み。"
-keywords: ["システムプロンプト", "プロンプトキャッシュ", "cache_control", "CLAUDE.md", "コンテキスト注入"]
+description: "open-claude-code のシステムプロンプトの作られ方。src/constants/prompts/ のモジュール構成、実際のセクション順序、静的／動的の境界と組織横断キャッシュ、3 つのキャッシュモード、TTL の決定、そして git の状態と CLAUDE.md が別経路で注入される仕組み。"
+keywords: ["システムプロンプト", "モジュール構成", "プロンプトキャッシュ", "cache_control", "CLAUDE.md", "コンテキスト注入"]
 ---
 
 <!-- lang-switcher -->
@@ -9,7 +9,7 @@ keywords: ["システムプロンプト", "プロンプトキャッシュ", "cac
 
 ## 配列から API 呼び出しまで
 
-システムプロンプトは固定のテキストではありません。**`string[]`**（`src/utils/systemPromptType.ts:8` のブランド型 `SystemPrompt`）であり、組み立て、ブロック分割、キャッシュ用の印付けを経て API へ送られます。
+システムプロンプトは固定のテキストではありません。**`string[]`**（ブランド型 `SystemPrompt`）であり、組み立て、ブロック分割、キャッシュ用の印付けを経て API へ送られます。
 
 ### 3 段のパイプライン
 
@@ -21,14 +21,14 @@ buildEffectiveSystemPrompt() →  SystemPrompt     （優先順位の経路を�
 buildSystemPromptBlocks()    →  TextBlockParam[] （分割 + cache_control）
 ```
 
-1. **`getSystemPrompt()`**（`src/constants/prompts.ts:444`）が静的・動的セクションを集め、`SYSTEM_PROMPT_DYNAMIC_BOUNDARY` を挿入する
-2. **`buildEffectiveSystemPrompt()`**（`src/utils/systemPrompt.ts:41`）が Override > Coordinator > Agent > Custom > Default から選ぶ
-3. **`buildSystemPromptBlocks()`**（`src/services/api/claude.ts:3279`）が `splitSysPromptPrefix()` で分割し、各ブロックに `cache_control` を付ける
+1. **`getSystemPrompt()`**（`src/constants/prompts/assemble.ts`）が静的・動的セクションを集め、`SYSTEM_PROMPT_DYNAMIC_BOUNDARY` を挿入する
+2. **`buildEffectiveSystemPrompt()`**（`src/utils/session/systemPrompt.ts`）が Override > Coordinator > Agent > Custom > Default から選ぶ
+3. **`buildSystemPromptBlocks()`**（`src/services/api/claude.ts`）が `splitSysPromptPrefix()` で分割し、各ブロックに `cache_control` を付ける
 
 ## ブランド型
 
 ```typescript
-// packages/@ant/model-provider/src/types/systemPrompt.ts:4
+// packages/@ant/model-provider/src/types/systemPrompt.ts
 export type SystemPrompt = readonly string[] & {
   readonly __brand: 'SystemPrompt'
 }
@@ -37,19 +37,101 @@ export function asSystemPrompt(value: readonly string[]): SystemPrompt {
 }
 ```
 
-ブランドにより、素の `string[]` が誤って API 呼び出しへ渡ることを防ぎます。`asSystemPrompt()` を明示的に通したものだけがこの型になります。
+ブランドにより、素の `string[]` が誤って API 呼び出しへ渡ることを防ぎます。`asSystemPrompt()` を明示的に通したものだけがこの型になります。`src/utils/session/systemPromptType.ts` は後方互換のための再エクスポート層で、定義本体は上のパッケージ側にあります。
 
-## `getSystemPrompt()` が組み立てるもの
+## `src/constants/prompts/` のモジュール構成
 
-`src/constants/prompts.ts:444` が工場で、順序付きの配列を返します。
+`src/constants/prompts.ts` はかつて 900 行の単一ファイルでしたが、現在は**ロジックを持たない純粋な再エクスポート barrel** です。十数か所の既存 import をそのまま動かすためだけに残っています。プロンプト本体は関心ごとに `src/constants/prompts/` へ分割され、1 セクション 1 モジュールになりました。
 
-| 領域 | 内容 | キャッシュ |
-|------|------|-----------|
-| **静的** | intro、システム規則、タスクの進め方、行動、ツールの使い方、トーンと文体、出力効率 | 組織をまたいでキャッシュ可能（`scope: 'global'`） |
-| **BOUNDARY** | `SYSTEM_PROMPT_DYNAMIC_BOUNDARY = '__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__'` | 印。API へは送られず、静的／動的を分けてグローバルキャッシュを可能にするためだけに存在する |
-| **動的** | セッション指針、メモリ、モデル上書き、環境情報、言語、出力スタイル、MCP 指示、scratchpad、FRC、ツール結果の要約、トークン予算、brief | セッションごとに変わる（`scope: 'org'` またはキャッシュなし） |
+| ファイル | 置くもの |
+|---------|---------|
+| `assemble.ts` | `getSystemPrompt()`：セクションの順序、静的／動的境界の位置、2 つの早期 return 経路（`CLAUDE_CODE_SIMPLE` と proactive）、`TOKEN_BUDGET_SECTION` |
+| `shared.ts` | 2 つ以上のセクションが一字一句共有する定数：`SYSTEM_PROMPT_DYNAMIC_BOUNDARY`、`EMOJI_GUIDANCE`、`NO_COLON_BEFORE_TOOL_CALLS`、`SUMMARIZE_TOOL_RESULTS_SECTION` |
+| `format.ts` | 描画ヘルパー：`prependBullets()`（意味を担う ` - ` / `  - ` の入れ子）と `bulletSection()`（`# 見出し` + 箇条書き。中身が全て消えたら `null`） |
+| `intro.ts` | 冒頭ブロック、サイバーリスク指示、URL の制約。**製品アイデンティティ行はここにはありません** —— `getCLISyspromptPrefix()`（`src/constants/system.ts`）が前置します |
+| `harness.ts` | `# System`：モデル自身では観測できない harness の事実（出力がユーザーへ届く経路、権限モード、コアツールと遅延ツール、`<system-reminder>` タグ、prompt injection、hooks） |
+| `doingTasks.ts` | `# Doing tasks`：タスクの範囲、コードスタイルとコメントの規律、正直な報告、フィードバック導線 |
+| `actions.ts` | `# Executing actions with care`：可逆性と影響範囲、リスク行為の分類、git の事前確認 |
+| `tools.ts` | `# Using your tools` と `getAgentToolSection()`、および 2 つの `CORE_TOOLS_PROMPT_*_NAMES` 一覧 |
+| `communication.ts` | `# Communicating with the user` —— **ユーザーに見えるテキストのみ**（ツール呼び出しの合間の更新、最終回答の形、コード参照の記法） |
+| `conduct.ts` | 行動規範のセクション群：`# Delivering work`、`# Corrections`、`# Context management`、および見出しのない独立ルール 3 本（代名詞の既定、タスクの連続性、情報が揃ったら動く） |
+| `sessionGuidance.ts` | `# Session-specific guidance`：そのセッションで使えるものによって変わる指針（境界より後に置く必要がある） |
+| `environment.ts` | `# Environment` と `computeSimpleEnvInfo()`、知識カットオフ表、シェル判定 |
+| `preferences.ts` | `# Language` と `# Output Style: <name>` |
+| `mcp.ts` | `# MCP Server Instructions`（サーバー名でソートしてから連結） |
+| `scratchpad.ts` | `# Scratchpad Directory` |
+| `discoverSkills.ts` | DiscoverSkills の文言と feature 判定。メインセッションとサブエージェントで共有 |
+| `subagent.ts` | `DEFAULT_AGENT_PROMPT`、サブエージェントの権限境界、`enhanceSystemPromptWithEnvDetails()`。**`getSystemPrompt()` の出力には含まれません** |
+| `proactive.ts` | 自律モード（proactive / KAIROS）の骨格一式と `brief` セクション |
 
-> **境界の役割。** プロンプトを、変わらない静的領域と、ユーザーやセッションによって変わる領域に分けます。静的領域は全員同じなので `scope: 'global'` で組織をまたいでキャッシュでき、動的領域は `scope: 'org'` かキャッシュなしにしかなりません。印そのものは番兵の文字列で、送信前に取り除かれます。モデルが目にすることはありません。
+**追加するときの置き場所**（barrel 冒頭のコメントがそのまま 3 か条です）:
+
+- 新しいプロンプトのセクション → `./prompts/` 配下の**専用モジュール**
+- 順序やキャッシュ境界の調整 → `./prompts/assemble.ts`
+- 2 つのセクションが共有する文字列 → `./prompts/shared.ts`
+
+`src/constants/prompts.ts` 自体はもうロジックを受け付けません。
+
+> **改名されたセクション。** 旧版の「Tone & Style」と「Output Efficiency」は、単一の `# Communicating with the user` に統合されました。ant 限定の「Model Override」（`defaultSystemPromptSuffix`）は連鎖ごと削除され、ガードレールに逆方向のアサーションが入っています。「FRC」セクションはもう存在しません。
+
+## `getSystemPrompt()` が組み立てるもの（実際の描画順）
+
+`getSystemPrompt()` は順序付きの配列を返し、最終的に `\n\n` で連結されます。下表は**実際の描画順**です。`bun run scripts/dump-prompt.ts` でいつでも取り直せます（完全な出力が `scripts/system-prompt-dump.txt` に書かれます。`.gitignore` 済みのスクリプト生成物なので、コミットしないでください）。
+
+「見出しなし」の項目は本当に `#` 見出しを持ちません。隣のセクションの箇条書きではなく、1 ルールで独立したブロックです。
+
+### 静的領域（境界より前、組織をまたいでキャッシュ可能）
+
+| # | 描画される見出し | モジュール | 生成関数・定数 |
+|---|-----------------|-----------|---------------|
+| 1 | *（見出しなし）* 冒頭 + サイバーリスク指示 + URL の制約 | `intro.ts` | `getIntroSection()` |
+| 2 | `# System` | `harness.ts` | `getSystemSection()` |
+| 3 | *（見出しなし）* 代名詞が明示されていなければ they/them | `conduct.ts` | `getPronounsSection()` |
+| 4 | `# Doing tasks` | `doingTasks.ts` | `getDoingTasksSection()` —— output style が `keepCodingInstructions: false` を宣言すると丸ごと消える |
+| 5 | `# Executing actions with care` | `actions.ts` | `getActionsSection()` |
+| 6 | *（見出しなし）* タスクの連続性（合意済みのタスクは最後まで承認済み） | `conduct.ts` | `getTaskContinuitySection()` |
+| 7 | `# Using your tools` | `tools.ts` | `getUsingYourToolsSection(enabledTools)` |
+| 8 | `# Communicating with the user` | `communication.ts` | `getCommunicationSection()` |
+| 9 | `# Delivering work` | `conduct.ts` | `getDeliveringWorkSection()` |
+| 10 | `# Corrections` | `conduct.ts` | `getCorrectionsSection()` |
+| 11 | `# Context management` | `conduct.ts` | `getContextManagementSection()` |
+| 12 | *（見出しなし）* 情報が揃ったら動く。確立済みの事実を導き直さない | `conduct.ts` | `getActNotRederiveSection()` |
+| 13 | *（見出しなし）* ツール結果の重要点は回答に書き写す | `shared.ts` | `SUMMARIZE_TOOL_RESULTS_SECTION` |
+
+### 境界の印
+
+`SYSTEM_PROMPT_DYNAMIC_BOUNDARY`（`= '__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__'`、`shared.ts` に定義）は 13 番の直後に入り、**`shouldUseGlobalCacheScope()` が真のときだけ**挿入されます。これは番兵の文字列で、送信前に取り除かれるためモデルが目にすることはありません。役割は、分割処理が静的領域だけを正確に `scope: 'global'` と印付けできるようにすることです。
+
+### 動的領域（境界より後、セクションレジストリ経由）
+
+| # | 描画される見出し | モジュール | 登録名 |
+|---|-----------------|-----------|--------|
+| 14 | `# Session-specific guidance` | `sessionGuidance.ts` | `session_guidance` |
+| 15 | *（見出しなし）* メモリディレクトリの内容 | `src/memdir/memdir.ts` | `memory` |
+| 16 | `# Environment` | `environment.ts` | `env_info_simple` |
+| 17 | `# Language` | `preferences.ts` | `language`（言語設定が無ければ null） |
+| 18 | `# Output Style: <name>` | `preferences.ts` | `output_style` |
+| 19 | `# MCP Server Instructions` | `mcp.ts` | `mcp_instructions`（唯一の `DANGEROUS_uncached`） |
+| 20 | `# Scratchpad Directory` | `scratchpad.ts` | `scratchpad` |
+| 21 | *（見出しなし）* トークン予算 | `assemble.ts` | `token_budget`。`TOKEN_BUDGET` のコンパイルが必要 |
+| 22 | *（見出しなし）* brief モード | `proactive.ts` | `brief`。`KAIROS` または `KAIROS_BRIEF` が必要 |
+
+動的セクションのほとんどは**条件付き**です。既定設定で取った dump には、静的領域の全項目に加えて `# Session-specific guidance` と `# Environment` の 2 つしか現れません。残りは言語設定なし・output style なし・MCP サーバーなし・scratchpad 無効・feature 未コンパイルのため `null` を返し、除外されます。
+
+## 静的と動的の分け方（および occ と上流の相違）
+
+`assemble.ts` の JSDoc は、静かに壊れうる不変条件を 2 つ関数の頭に書いています。
+
+1. **境界より前はすべてビルド時定数でなければならない。** その前置部分はハッシュ化され、*組織をまたいで*キャッシュされます。実行時ビットで文面が変わるセクションは印より後に置くべきで、さもないとキャッシュキーの変種が 2^N 倍に膨らみます。
+2. **印より後のセクションはセクションレジストリを通る**ため、会話ごとにメモ化され、`/clear` と `/compact` で無効化されます。
+
+**ここが occ と上流の意図的な相違点です。** 上流は行動規範のセクション（代名詞、`# Delivering work`、`# Corrections`、`# Context management`）を動的側に置いています。ゲートが Anthropic の A/B フラグを読み、「これは Claude のモデルファミリーか」という判定と AND を取るからです。occ にはファーストパーティ経路の外で**そのどちらの入力もありません**。ゲートをそのまま移植すれば、多くの provider でこれらのセクションが黙って空になります。そこで occ はこれらをすべての provider に**無条件**で適用します。結果としてビルド時定数になるため、キャッシュ可能な側に置くのが正しい、というわけです。意図的な相違であって、見落としではありません。
+
+同じ理由で、もともとただの定数文字列だった `SUMMARIZE_TOOL_RESULTS_SECTION` も、動的スロットを 1 つ占めるのをやめて静的領域へ移りました。
+
+逆に `# Session-specific guidance` の中の条件 —— `enabledTools` の集合、`isForkSubagentEnabled()`、`getIsNonInteractiveSession()`、GrowthBook のゲート値 —— はどれも実行時ビットなので、境界より後に留める必要があります。ソースのコメントも率直です。
+
+> Everything here must stay AFTER SYSTEM_PROMPT_DYNAMIC_BOUNDARY. Each conditional is a runtime bit that would otherwise multiply the Blake2b prefix-hash variants of the cacheScope:'global' prefix (2^N).
 
 ### 動的セクションの登録
 
@@ -67,7 +149,11 @@ DANGEROUS_uncachedSystemPromptSection(
 )
 ```
 
-`resolveSystemPromptSections()` が毎ターンすべてのセクションを解決し、`cacheBreak: false` のものは `getSystemPromptSectionCache()` のキャッシュ値を優先します。危険な方を使うのは、MCP 指示のように本当に揮発するものだけです。
+`resolveSystemPromptSections()` が毎ターンすべてのセクションを解決し、`cacheBreak: false` のものは `getSystemPromptSectionCache()` のキャッシュ値を優先します。プロンプト全体で危険な方を使うのは MCP 指示だけです。しかもそのゲート判定は、2 つのセクション変種を選び分けるのではなく compute 関数の**内側**にあります。こうしておけば、セッション途中でゲートが反転しても古いキャッシュ値を読むことがありません。
+
+## 2 つの早期 return 経路
+
+`getSystemPrompt()` には、上の表に至らない分岐が 2 つあります。
 
 ### `CLAUDE_CODE_SIMPLE` の高速経路
 
@@ -79,9 +165,13 @@ DANGEROUS_uncachedSystemPromptSection(
 
 セクション登録もキャッシュ分割も動的な組み立ても飛ばします。トークン消費を最小にしたいテスト用です。
 
+### proactive（自律モード）の経路
+
+`isProactiveActive()` が真のとき、静的な骨格はまるごと差し替えられます。tick プロンプトで駆動されるエージェントは対話的なエージェントとは仕事の形が違うため、`# Doing tasks` や `# Using your tools` を**継承しません**。この経路が出すのは、`PROACTIVE_INTRO` とサイバーリスク指示、`<system-reminder>` の説明、`# Context management`、メモリ、環境、言語、MCP 指示、scratchpad、ツール結果のルール、そして最後に `getProactiveSection()` の `# Autonomous work` です。
+
 ## 5 段階の優先順位
 
-`src/utils/systemPrompt.ts:41` が実際に使うプロンプトを決めます。
+`src/utils/session/systemPrompt.ts` が実際に使うプロンプトを決めます。
 
 | 優先度 | 条件 | 挙動 |
 |--------|------|------|
@@ -95,7 +185,7 @@ DANGEROUS_uncachedSystemPromptSection(
 
 ## provider
 
-Claude Code は複数の API provider に対応し、2 つに分かれます。
+occ は複数の API provider に対応し、2 つに分かれます。
 
 | 区分 | Provider | 環境変数 | 備考 |
 |------|----------|---------|------|
@@ -106,23 +196,37 @@ Claude Code は複数の API provider に対応し、2 つに分かれます。
 | **3P** | `gemini` | `CLAUDE_CODE_USE_GEMINI=1` | Google Gemini |
 | **3P** | `grok` | `CLAUDE_CODE_USE_GROK=1` | xAI Grok |
 
-provider が決めるもの:
-
-- **使える beta ヘッダ** — 一部の beta は 1P 限定
-- **キャッシュ戦略** — `scope: 'global'` は 1P だけ
-- **トークンの数え方** — Bedrock は専用の countTokens、OpenAI と Gemini は概算へ戻る
-
 ```typescript
-// src/utils/model/providers.ts:5-13
+// src/utils/model/providers.ts
 export type APIProvider =
-  | 'firstParty'    // 1P — Anthropic 直接
-  | 'bedrock'       // 3P — AWS Bedrock
-  | 'vertex'        // 3P — Google Vertex
-  | 'foundry'       // 3P — Anthropic Foundry
-  | 'openai'        // 3P — OpenAI 互換レイヤ
-  | 'gemini'        // 3P — Google Gemini
-  | 'grok'          // 3P — xAI Grok
+  | 'firstParty'
+  | 'bedrock'
+  | 'vertex'
+  | 'foundry'
+  | 'openai'
+  | 'gemini'
+  | 'grok'
 ```
+
+**`getAPIProvider()` が答えるのは「どの通信形式か」であって、「このセッションが誰のものか」ではありません。** 3 つの別々の問いに 3 つの別々の述語があり、取り違えてはいけません。
+
+- `getAPIProvider()` —— どのプロトコルで話すか
+- `isThirdPartyModelCatalog()` —— 誰のカタログか、誰の価格表か。**グローバルキャッシュのゲートはこれ**
+- `servesAnthropicModels()` —— `claude-opus-5` という id が本当に Anthropic の Opus 5 を指すか。**環境セクションのモデルカタログ行のゲートはこれ**
+
+provider は、使える beta ヘッダ（一部はファーストパーティのカタログ限定）とトークンの数え方（Bedrock は専用の countTokens、OpenAI と Gemini は概算）も決めます。
+
+## 環境セクションの provider 中立化
+
+`# Environment`（`computeSimpleEnvInfo()`）は、プロンプト中で唯一「どのモデルで動いているか、どんなマシンか」を述べる場所です。つまり、Anthropic 以外のセッションに嘘をつきやすい場所でもあります。ゲートは 3 つです。
+
+- **マーケティング名**：`getMarketingNameForModel()` は、そのセッションが Anthropic のチェックポイントを提供していなければ `undefined` を返し、行は `You are powered by the model <id>.`（マーケティング名なしの素の id）になります。
+- **Claude モデルカタログ行**（「Model IDs — Fable 5: …」）のゲートは **`servesAnthropicModels()`** です。`getAPIProvider()`（通信形式の答え）でも `isThirdPartyModelCatalog()`（価格表の答え）でもありません。Bedrock / Vertex / Foundry は本物の Claude チェックポイントを提供するのでこの行が要ります。一方 OpenAI 互換エンドポイントでは `claude-opus-5` が「提供していない単なる文字列」に解決されるため、その id をモデルに渡すことは、必ず 404 になる API 文字列をユーザーのコードへ書かせるのと同じです。
+- **fast mode の行**のゲートは `isFastModeAvailable()` で、第三者カタログ判定と購読判定がすでに畳み込まれています。ユーザーが押せないトグルをモデルに宣伝しても、実行できない提案が生まれるだけです。
+
+Anthropic の製品ラインナップの一文（デスクトップ / ウェブ / ブラウザ拡張）はこのビルドでは事実に反するため**削除済み**で、ガードレールに逆方向のアサーションがあります。サブエージェントは `includeProductInfo: false` を通るので、カタログ行も fast mode 行も受け取りません。
+
+知識カットオフ表（`getKnowledgeCutoff()`）は手動管理です。上流はモデルカタログの `knowledge_cutoff` フィールドから読みますが、occ はそのカタログデータを持ちません（`ALL_MODEL_CONFIGS` にあるのは id だけです）。
 
 ## キャッシュ: ブロック、印、命中
 
@@ -134,7 +238,7 @@ Anthropic のプロンプトキャッシュは、同一のシステムプロン�
 
 ### `splitSysPromptPrefix()` の 3 モード
 
-キャッシュ戦略の中心は `src/utils/api.ts:321` です。
+キャッシュ戦略の中心は `src/utils/telemetry/api.ts` の `splitSysPromptPrefix()` です。attribution ヘッダと CLI 前置ブロックは、位置ではなく**内容**で識別します（`CLI_SYSPROMPT_PREFIXES`）。
 
 **モード 1 — MCP ツールがある場合（`skipGlobalCacheForSystemPrompt=true`）**
 
@@ -144,9 +248,9 @@ Anthropic のプロンプトキャッシュは、同一のシステムプロン�
 [everything else]       → cacheScope: 'org'
 ```
 
-MCP のツール一覧はサーバーの接続・切断でセッション途中に変わりえます。組織をまたぐキャッシュの前提が崩れるため、組織スコープへ格下げされます。
+MCP のツール一覧はサーバーの接続・切断でセッション途中に変わりえます。組織をまたぐキャッシュの前提が崩れるため、組織スコープへ格下げされます。この経路では境界の印はそのまま捨てられます。
 
-**モード 2 — グローバルキャッシュ + 境界あり（1P 限定）**
+**モード 2 — グローバルキャッシュ + 境界あり**
 
 ```
 [attribution header]    → cacheScope: null     （キャッシュなし）
@@ -155,32 +259,34 @@ MCP のツール一覧はサーバーの接続・切断でセッション途中�
 [dynamic content]       → cacheScope: null     （キャッシュなし）
 ```
 
-最も効率の良いモードです。`SYSTEM_PROMPT_DYNAMIC_BOUNDARY` より前（intro、規則、トーンと文体）は全ユーザー共通なので、グローバルにキャッシュできます。
+最も効率の良いモードです。`SYSTEM_PROMPT_DYNAMIC_BOUNDARY` より前（intro、`# System`、`# Doing tasks`、`# Communicating with the user`、行動規範の各節）は全ユーザー共通なので、グローバルにキャッシュできます。
 
 > **境界が挿入される条件:**
 
 ```typescript
-// src/utils/betas.ts:226-229
+// src/utils/model/betas.ts
 export function shouldUseGlobalCacheScope(): boolean {
   return (
-    getAPIProvider() === 'firstParty' &&
+    !isThirdPartyModelCatalog() &&
     !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS)
   )
 }
 ```
 
 ```typescript
-// src/constants/prompts.ts:574
+// src/constants/prompts/assemble.ts
 ...(shouldUseGlobalCacheScope() ? [SYSTEM_PROMPT_DYNAMIC_BOUNDARY] : []),
 ```
 
 つまり:
 
-- **3P ユーザー（Bedrock / Vertex / OpenAI / Gemini）**には境界が存在せず、常にモード 3
-- **実験的 beta を切った 1P ユーザー**（`CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`）にも境界は入らない
-- **既定の 1P ユーザー**は境界あり、モード 2
+- **第三者カタログのセッション**（Bedrock / Vertex / Foundry / OpenAI / Gemini / Grok / OpenCode など）には境界が存在せず、常にモード 3 です。Foundry が外れているのは、GrowthBook が Foundry ユーザーをロールアウト実験に振り分けたことがなく、treatment データがファーストパーティ分しかないからです。
+- **実験的 beta を切った場合**（`CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`）にも境界は入りません
+- **それ以外**は境界あり、モード 2
 
-**モード 3 — 既定（3P provider、または境界なし）**
+判定に使うのは `isThirdPartyModelCatalog()` であって `getAPIProvider() === 'firstParty'` ではない点に注意してください。`claude-*` 系モデルを配る単純なプロキシや企業ゲートウェイは第三者カタログではないので、グローバルキャッシュを受け取れます。
+
+**モード 3 — 既定（第三者カタログ、または境界なし）**
 
 ```
 [attribution header]    → cacheScope: null    （キャッシュなし）
@@ -190,7 +296,7 @@ export function shouldUseGlobalCacheScope(): boolean {
 
 ### `getCacheControl()` と TTL
 
-`src/services/api/claude.ts:348` が `cache_control` を作ります。
+`src/services/api/claude.ts` の `getCacheControl()` が `cache_control` を作ります。
 
 ```typescript
 {
@@ -209,39 +315,28 @@ export function shouldUseGlobalCacheScope(): boolean {
   - 以前はここが `[]` に戻っていたため、Anthropic 社内のデプロイ以外では 1h TTL が実質的な死にコードでした。**5 分を超える停止のたびに 20〜50K トークンの前置部分が丸ごと書き直されていた**ことになります。短命な fork 元（`speculation`、`session_memory`、`prompt_suggestion`）は既定表から意図的に外しています。1〜3 ターンしか動かないため、1h の書き込みは費用だけ払って読み戻せません。
 - **セッション内の安定性** — 資格判定の結果は bootstrap state に固定され、GrowthBook の設定が途中で変わっても同一セッション内で TTL がぶれません
 
-### セッション固有の指針をどこに置くか
-
-`getSessionSpecificGuidanceSection()`（`src/constants/prompts.ts:354`）は `SYSTEM_PROMPT_DYNAMIC_BOUNDARY` の**後**に置く必要があります。次を含むからです。
-
-- そのセッションの `enabledTools` 集合
-- `isForkSubagentEnabled()` の実行時結果
-- `getIsNonInteractiveSession()` の結果
-
-これらの実行時ビットを静的領域に置くと、Blake2b の前置ハッシュが 2^N 通り（N は実行時条件の数）に分裂し、命中率が完全に崩れます。ソースのコメントも明示的です。
-
-> Each conditional here is a runtime bit that would otherwise multiply the Blake2b prefix hash variants (2^N). See PR #24490, #24171 for the same bug class.
-
 ## コンテキストの注入
 
-システムプロンプトの配列には実行時の文脈（git の状態、CLAUDE.md）は入りません。それらは別の 2 経路から入ります。
+システムプロンプトの配列には実行時の文脈（git の状態、CLAUDE.md）は入りません。それらは別の 2 経路から入り、どちらも `src/context.ts` にあります。
 
-### システムコンテキスト（`src/context.ts:116`）
+### システムコンテキスト（`getSystemContext()`）
 
 ```typescript
 export const getSystemContext = memoize(async () => {
   return {
-    gitStatus,           // ブランチ、状態、直近のコミット（MAX_STATUS_CHARS=2000 で切り詰め）
-    cacheBreaker,        // 社内ユーザー向けのキャッシュブレーカー
+    gitStatus,           // ブランチ、状態、直近のコミット
+    cacheBreaker,        // BREAK_CACHE_COMMAND がコンパイルされている場合のみ
   }
 })
 ```
 
 - `lodash.memoize` により、**セッション中に 1 度だけ**計算されます
 - git のスナップショットは 5 つの `git` コマンドを並列実行します（branch、defaultBranch、status、log、userName）
-- status が 2000 文字を超えると切り詰め、BashTool でさらに見るよう注記を付けます
-- `systemPromptInjection` が変わると `getUserContext.cache.clear?.()` がすべての文脈キャッシュを消します
+- status が `MAX_STATUS_CHARS`（1000 文字）を超えると切り詰め、BashTool でさらに見るよう注記を付けます
+- `CLAUDE_CODE_REMOTE` が真の場合、または git の指示が無効な場合は git 状態を丸ごと省略します
+- `setSystemPromptInjection()` は `getUserContext` と `getSystemContext` 両方のキャッシュを即座に消します
 
-### ユーザーコンテキスト（`src/context.ts:155`）
+### ユーザーコンテキスト（`getUserContext()`）
 
 ```typescript
 export const getUserContext = memoize(async () => {
@@ -257,7 +352,7 @@ export const getUserContext = memoize(async () => {
 
 ### 注入される位置
 
-`src/query.ts:449`:
+`src/query.ts` にて:
 
 ```typescript
 // システムコンテキストはシステムプロンプトの末尾へ追加する
@@ -266,21 +361,22 @@ const fullSystemPrompt = asSystemPrompt(
 )
 ```
 
-ユーザーコンテキストは `prependUserContext()`（`src/utils/api.ts:449`）が、会話のすべてのメッセージより前に置かれる最初の user メッセージとして、`<system-reminder>` タグで包んで注入します。
+ユーザーコンテキストは `prependUserContext()`（`src/utils/telemetry/api.ts`）が、会話のすべてのメッセージより前に置かれる最初の user メッセージとして、`<system-reminder>` タグで包んで注入します。
 
 ## attribution ヘッダ
 
-すべてのリクエストのシステムプロンプトの先頭ブロックが attribution ヘッダです（`src/constants/system.ts:30`）。
+すべてのリクエストのシステムプロンプトの先頭ブロックが attribution ヘッダです（`src/constants/system.ts` の `getAttributionHeader()`）。
 
-- **`cc_version`** — Claude Code のバージョンと指紋
-- **`cc_entrypoint`** — 動作している入口（REPL / SDK / pipe など）
-- **`cch=00000`** — NATIVE_CLIENT_ATTESTATION が有効なとき、Bun のネイティブ HTTP 層が送信前にゼロを計算済みハッシュへ置き換え、サーバーがそれを検証して本物の Claude Code クライアントからの要求であることを確認する
+- **`cc_version`** — occ のバージョン
+- **`cc_entrypoint`** — 動作している入口（REPL / SDK / pipe など。`CLAUDE_CODE_ENTRYPOINT` から読む）
+- **`cc_workload`** — ターン単位のヒント。cron 起点のリクエストなどを低 QoS のプールへ振り分けるために使う。無い場合は対話的な既定
+- **`cch=00000`** — `NATIVE_CLIENT_ATTESTATION` が有効なとき、Bun のネイティブ HTTP 層が送信前にゼロを計算済みハッシュへ置き換え、サーバーがそれを検証して本物のクライアントからの要求であることを確認する。同じ長さのプレースホルダにしているのは、Content-Length の変化とバッファ再確保を避けるため
 
-このヘッダは常に `cacheScope: null` です。バージョンと指紋で変わるため、キャッシュしても意味がありません。
+このヘッダは常に `cacheScope: null` です。バージョンと入口で変わるため、キャッシュしても意味がありません。`CLAUDE_CODE_ATTRIBUTION_HEADER=0` か GrowthBook のキルスイッチで丸ごと止められます。
 
 ## CLAUDE.md
 
-設計の中でも巧妙な部分のひとつです。プロジェクト根に `CLAUDE.md` を置くだけで、モデルがそのプロジェクトを理解します。
+プロジェクト根に `CLAUDE.md` を置くだけで、モデルがそのプロジェクトを理解します。
 
 - **概要** — 何をするプロジェクトで、何の上に建っているか
 - **規約** — コードスタイル、命名、ブランチ運用
@@ -295,26 +391,34 @@ const fullSystemPrompt = asSystemPrompt(
         └── /project/src/CLAUDE.md  ← サブディレクトリ（モジュール固有）
 ```
 
-`src/utils/claudemd.ts` の `getClaudeMds()` と `getMemoryFiles()` が作業ディレクトリから上へ辿り、一致するものをすべて統合します。
+`src/utils/session/claudemd.ts` の `getClaudeMds()` と `getMemoryFiles()` が作業ディレクトリから上へ辿り、一致するものをすべて統合します。
 
 ## なぜ 1 つの `string` ではなく `string[]` なのか
 
 配列としてモデル化しているのは**キャッシュのブロック化**のためです。
 
 1. Anthropic のプロンプトキャッシュは**コンテンツブロック**単位で働く
-2. 分割することで、変わらない部分（intro、規則）が独立して命中できる
+2. 分割することで、変わらない部分（intro、`# System`）が独立して命中できる
 3. 1 つの `string` だと、日付が変わるといった 1 文字の違いでプロンプト全体のキャッシュが無効になる
 4. `SYSTEM_PROMPT_DYNAMIC_BOUNDARY` により `splitSysPromptPrefix()` が静的領域だけを `scope: 'global'` と印付けし、動的領域はキャッシュなしか `scope: 'org'` にできる
 
 これがトークンコスト最適化の中心です。典型的なシステムプロンプトは 20K トークン超あり、ブロック化により入力トークン費用の 30〜50% を節約できます。
 
+## プロンプトを編集するときのガードレール
+
+3 つあり、どれを欠いても見落とされる変更の種類が生まれます。
+
+- **`bun run scripts/dump-prompt.ts`** は完全なプロンプトを `scripts/system-prompt-dump.txt` へ描画します（`.gitignore` 済みのスクリプト生成物。コミットしないこと）。変更の前後で 1 回ずつ実行して差分を取ることが、「モデルが実際に何を受け取るか」を見る唯一の手段です。単体テストはいくつかのアンカー文を検査するだけで、セクションの順序、空行、ゲートで丸ごと消えた節までは見えません。第 1 引数にモデル id を渡せます。
+- **`src/constants/promptEngineeringAudit.runner.ts`** は、挙動のアンカー、削除済み内容への逆方向アサーション（Anthropic の製品ラインナップ、ant 限定の `defaultSystemPromptSuffix` など）、構造アサーション（静的セクションの順序、`# Session-specific guidance` と `# Environment` が境界より前に現れないこと）を保持します。
+- **`tests/mocks/systemPromptEnv.ts`** は dump スクリプトとガードレール runner が共有するモック連鎖です。ここでの上書きはすべて出力を*決定的*にするため（ホストの provider 設定、git の状態、feature flag、端末に左右されないため）にあり、何かを握りつぶすためではありません。以前は 2 つの呼び出し側が手書きの複製を持っており、案の定ずれました。
+
 ## OpenAI / Gemini 互換レイヤ
+
+occ は OpenAI・Gemini・Grok の各プロトコルに互換レイヤを持ち、Anthropic 以外のエンドポイントを使えます。コードは 2 か所に分かれます。**プロトコル・認証・ネットワーク**は `src/services/api/<provider>/`、**フォーマット変換**は `packages/@ant/model-provider/src/providers/<provider>/` です。
 
 ### OpenAI
 
-`CLAUDE_CODE_USE_OPENAI=1` で有効になり、OpenAI Chat Completions プロトコルを話す任意のエンドポイント（Ollama、DeepSeek、vLLM）に対応します。
-
-実体は**ストリームアダプタ**です。
+`CLAUDE_CODE_USE_OPENAI=1` で有効になります。実体は**ストリームアダプタ**です。
 
 1. Anthropic 形式のリクエストを OpenAI 形式へ変換する
 2. 互換エンドポイントを呼ぶ
@@ -323,35 +427,41 @@ const fullSystemPrompt = asSystemPrompt(
 
 ```
 src/services/api/openai/
-├── client.ts           # クライアント設定
-├── convertMessages.ts  # メッセージ変換（Anthropic → OpenAI）
-├── convertTools.ts     # ツール定義の変換
-├── streamAdapter.ts    # SSE の変換（OpenAI → Anthropic）
-├── modelMapping.ts     # モデル名の対応付け
-└── index.ts            # queryModelOpenAI()
+├── client.ts             # クライアント設定
+├── wireProtocol.ts       # chat / responses 2 本の線の選択
+├── requestBody.ts        # リクエストボディの構築
+├── responsesAdapter.ts   # Responses API の適合（アイドル監視、プロキシ対応）
+├── retry.ts              # バックオフ再試行
+├── reasoning.ts          # reasoning / effort パラメータ
+├── gptBehaviorPrompt.ts  # GPT 系の挙動オーバーレイ
+├── chatgptAuth.ts        # ChatGPT 購読の認証
+└── index.ts              # 入口関数 queryModelOpenAI()
 ```
 
-主な環境変数: `CLAUDE_CODE_USE_OPENAI=1`、`OPENAI_API_KEY`、`OPENAI_BASE_URL`（既定 `https://api.openai.com/v1`）、`OPENAI_MODEL`。
+主な環境変数: `CLAUDE_CODE_USE_OPENAI=1`、`OPENAI_API_KEY`、`OPENAI_BASE_URL`（既定 `https://api.openai.com/v1`）、`OPENAI_MODEL`、`OPENAI_WIRE_API`（既定 `chat`、または `responses`）。
 
 ### Gemini
 
 `CLAUDE_CODE_USE_GEMINI=1` で有効になります。
 
 ```
-src/services/api/gemini/
-├── client.ts           # クライアント設定
-├── convertMessages.ts  # メッセージ変換
-├── convertTools.ts     # ツール定義の変換
-├── streamAdapter.ts    # ストリーム変換
-├── modelMapping.ts     # モデル名の対応付け
-├── types.ts            # 型定義
-└── index.ts            # 入口
+src/services/api/gemini/           packages/@ant/model-provider/src/providers/gemini/
+├── client.ts                      ├── convertMessages.ts  # メッセージ変換
+├── oauthToken.ts                  ├── convertTools.ts     # ツール定義の変換
+├── antigravityWire.ts             ├── streamAdapter.ts    # ストリーム変換
+├── reasoning.ts                   ├── modelMapping.ts     # モデル名の対応付け
+└── index.ts  # queryModelGemini() └── usage.ts / types.ts
 ```
 
 主な環境変数: `CLAUDE_CODE_USE_GEMINI=1`、`GEMINI_API_KEY`、`GEMINI_BASE_URL`（既定 `https://generativelanguage.googleapis.com/v1beta`）、`GEMINI_MODEL`、および階層別の `GEMINI_DEFAULT_SONNET_MODEL` / `GEMINI_DEFAULT_OPUS_MODEL`。
 
 ### 互換レイヤの制限
 
+第三者カタログでは、いくつかの機能が使えません。
+
 - **厳密なトークン計数がない** — 概算に戻るため、自動 compaction の発火時点がずれる
-- **グローバルキャッシュが無い** — `scope: 'org'` のみ
+- **グローバルキャッシュが無い** — `shouldUseGlobalCacheScope()` が false を返し、`scope: 'org'` のみになる
 - **一部の beta が使えない** — Anthropic 固有の beta ヘッダに依存するもの
+- **Claude モデルカタログ行が出ない** — `# Environment` が `claude-*` の id を渡さない
+
+設定の真の出典は `docs/zh/features/providers.md` と `docs/zh/features/model-settings.md` を参照してください。
