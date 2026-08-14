@@ -75,9 +75,19 @@ export async function validateDirectoryForWorkspace(
   // Get current permission context
   const currentWorkingDirs = allWorkingDirectories(permissionContext)
 
-  // Check if already within an existing working directory
+  // Check if already within an existing working directory.
+  //
+  // `caseFold: false` — this is the one caller that is NOT a security check.
+  // Everywhere else the fold is the cautious answer (treat `.CLAUDE/` as
+  // `.claude/` so a case-flipped spelling cannot slip past a deny rule). Here
+  // the cautious answer is inverted: on a case-sensitive filesystem
+  // `/home/u/PROJ` and `/home/u/proj` are two different directories, and
+  // folding them together makes `/add-dir` report "already in the working
+  // directory" and add nothing — the user believes the directory is in scope
+  // while every later operation on it still prompts. Official passes
+  // `caseFold: false` at this exact call site.
   for (const workingDir of currentWorkingDirs) {
-    if (pathInWorkingPath(absolutePath, workingDir)) {
+    if (pathInWorkingPath(absolutePath, workingDir, { caseFold: false })) {
       return {
         resultType: 'alreadyInWorkingDirectory',
         directoryPath,

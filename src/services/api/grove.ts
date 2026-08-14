@@ -16,7 +16,7 @@ import { writeToStderr } from 'src/utils/process/process.js'
 import { getOauthConfig } from '../../constants/oauth.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config/config.js'
 import {
-  getAuthHeaders,
+  getFirstPartyTelemetryAuthHeaders,
   getUserAgent,
   withOAuth401Retry,
 } from '../../utils/network/http.js'
@@ -61,7 +61,21 @@ export const getGroveSettings = memoize(
     }
     try {
       const response = await withOAuth401Retry(() => {
-        const authHeaders = getAuthHeaders()
+        // All four Grove requests address getOauthConfig().BASE_API_URL —
+        // api.anthropic.com, never ANTHROPIC_BASE_URL — so they are first-party
+        // whatever the session's inference endpoint is.
+        //
+        // In practice every entry point is already behind isConsumerSubscriber()
+        // (interactiveHelpers, runHeadless, /privacy-settings), which implies
+        // isClaudeAISubscriber() and therefore the OAuth branch of
+        // getAuthHeaders() — a mirrored key has no way in. But that gate is
+        // three callers away from the request, and it is re-evaluated: a token
+        // that expires or a /logout between the gate and a dialog's
+        // updateGroveSettings() drops this code onto the x-api-key branch,
+        // where a DeepSeek/OpenCode session would hand over the mirrored
+        // credential. The first-party variant closes that window and is a no-op
+        // for the OAuth branch, which carries no x-api-key to inspect.
+        const authHeaders = getFirstPartyTelemetryAuthHeaders()
         if (authHeaders.error) {
           throw new Error(`Failed to get auth headers: ${authHeaders.error}`)
         }
@@ -94,7 +108,7 @@ export const getGroveSettings = memoize(
 export async function markGroveNoticeViewed(): Promise<void> {
   try {
     await withOAuth401Retry(() => {
-      const authHeaders = getAuthHeaders()
+      const authHeaders = getFirstPartyTelemetryAuthHeaders()
       if (authHeaders.error) {
         throw new Error(`Failed to get auth headers: ${authHeaders.error}`)
       }
@@ -126,7 +140,7 @@ export async function updateGroveSettings(
 ): Promise<void> {
   try {
     await withOAuth401Retry(() => {
-      const authHeaders = getAuthHeaders()
+      const authHeaders = getFirstPartyTelemetryAuthHeaders()
       if (authHeaders.error) {
         throw new Error(`Failed to get auth headers: ${authHeaders.error}`)
       }
@@ -241,7 +255,7 @@ export const getGroveNoticeConfig = memoize(
     }
     try {
       const response = await withOAuth401Retry(() => {
-        const authHeaders = getAuthHeaders()
+        const authHeaders = getFirstPartyTelemetryAuthHeaders()
         if (authHeaders.error) {
           throw new Error(`Failed to get auth headers: ${authHeaders.error}`)
         }

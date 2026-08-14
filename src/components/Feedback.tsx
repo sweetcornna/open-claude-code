@@ -21,6 +21,7 @@ import { openBrowser } from '../utils/network/browser.js';
 import { logForDebugging } from '../utils/telemetry/debug.js';
 import { env } from '../utils/config/env.js';
 import { type GitRepoState, getGitState, getIsGit } from '../utils/git/git.js';
+import { isBlockedByMirroredCredential, MIRRORED_CREDENTIAL_NOTICE } from '../utils/auth/firstPartyDataSharing.js';
 import { getAuthHeaders, getUserAgent } from '../utils/network/http.js';
 import { getInMemoryErrors, logError } from '../utils/telemetry/log.js';
 import { isEssentialTrafficOnly } from '../utils/auth/privacyLevel.js';
@@ -200,6 +201,17 @@ export function Feedback({
     setError(null);
     setFeedbackId(null);
 
+    // Bail before the transcript is assembled, not just before it is sent. A
+    // bug report carries the whole conversation plus every subagent transcript
+    // and the raw JSONL; in a session authenticated with a mirrored
+    // third-party credential there is no Anthropic account to file it against,
+    // so collecting all of that would only be work done to throw away.
+    if (isBlockedByMirroredCredential()) {
+      setError(MIRRORED_CREDENTIAL_NOTICE);
+      setStep('userInput');
+      return;
+    }
+
     // Get sanitized errors for the report
     const sanitizedErrors = getSanitizedErrorLogs();
 
@@ -255,7 +267,9 @@ export function Feedback({
       }
       setStep('done');
     } else {
-      if (result.isZdrOrg) {
+      if (result.blockedReason) {
+        setError(result.blockedReason);
+      } else if (result.isZdrOrg) {
         setError('Feedback collection is not available for organizations with custom data retention policies.');
       } else {
         setError('Could not submit feedback. Please try again later.');
@@ -596,12 +610,27 @@ function sanitizeAndLogError(err: unknown): void {
   }
 }
 
-async function submitFeedback(
+/**
+ * Exported for tests only — `/bug` always goes through the `Feedback` dialog.
+ * The alternative was driving the whole component through ink to assert that a
+ * mirrored third-party credential never carries a transcript to Anthropic, and
+ * this is the boundary that claim is actually about.
+ */
+export async function submitFeedback(
   data: FeedbackData,
   signal?: AbortSignal,
-): Promise<{ success: boolean; feedbackId?: string; isZdrOrg?: boolean }> {
+): Promise<{ success: boolean; feedbackId?: string; isZdrOrg?: boolean; blockedReason?: string }> {
   if (isEssentialTrafficOnly()) {
     return { success: false };
+  }
+
+  // The sink-side half of the check submitReport already made. Kept here as
+  // well because this is where the transcript actually leaves the machine: the
+  // POST below is hardcoded to api.anthropic.com, and in a DeepSeek/OpenCode
+  // session getAuthHeaders() would authenticate it with that vendor's
+  // credential mirrored into ANTHROPIC_API_KEY.
+  if (isBlockedByMirroredCredential()) {
+    return { success: false, blockedReason: MIRRORED_CREDENTIAL_NOTICE };
   }
 
   try {

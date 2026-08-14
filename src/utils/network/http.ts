@@ -9,6 +9,7 @@ import {
   getClaudeAIOAuthTokens,
   handleOAuth401Error,
   isClaudeAISubscriber,
+  isThirdPartyMirroredApiKey,
 } from '../auth/auth.js'
 import { getClaudeCodeUserAgent } from './userAgent.js'
 import { getWorkload } from '../session/workloadContext.js'
@@ -82,8 +83,11 @@ export function getAuthHeaders(): AuthHeaders {
       },
     }
   }
-  // TODO: this will fail if the API key is being set to an LLM Gateway key
-  // should we try to query keychain / credentials for a valid Anthropic key?
+  // Whatever getAnthropicApiKey() resolves to is sent as-is. That is right for
+  // requests bound for ANTHROPIC_BASE_URL — gateway key to the gateway,
+  // DeepSeek key to DeepSeek's Anthropic-compatible endpoint — and wrong for
+  // requests occ addresses to api.anthropic.com itself, which is why those go
+  // through getFirstPartyTelemetryAuthHeaders() below instead.
   const apiKey = getAnthropicApiKey()
   if (!apiKey) {
     return {
@@ -96,6 +100,66 @@ export function getAuthHeaders(): AuthHeaders {
       'x-api-key': apiKey,
     },
   }
+}
+
+/**
+ * Auth headers for every request occ addresses to Anthropic ON ITS OWN BEHALF,
+ * as opposed to on behalf of the user's configured model endpoint. Not for
+ * inference: that follows the user's endpoint and must keep using
+ * getAuthHeaders().
+ *
+ * Callers span three kinds, and the list grows — prefer this function for any
+ * new hardcoded api.anthropic.com request rather than reasoning about whether
+ * that particular one can be reached by a mirrored session:
+ *   - background telemetry: GrowthBook gate fetch, 1P event export, the
+ *     BigQuery metrics exporter and the metrics opt-out probe that gates it
+ *   - account/subscription probes: Grove settings, post-login first-token
+ *     date, the startup subscription-switch profile lookup, utilization
+ *   - user-initiated data sharing: /bug reports and transcript shares, which
+ *     additionally refuse via isBlockedByMirroredCredential() so they can tell
+ *     the user why instead of failing silently
+ *
+ * The distinction exists because `ANTHROPIC_API_KEY` is not always Anthropic's
+ * key. The DeepSeek and OpenCode wires mirror their own credential into it (an
+ * OpenCode one is a live OAuth access token), so the pre-fork code path
+ * — `getAuthHeaders()` straight into a POST at
+ * `https://api.anthropic.com/api/event_logging/batch` — sent a third party's
+ * secret to Anthropic as `x-api-key`. The stale TODO that used to sit in
+ * getAuthHeaders ("this will fail if the API key is being set to an LLM
+ * Gateway key") was upstream noticing the same shape and reading it as a
+ * reliability problem.
+ *
+ * Deliberately a separate function rather than a refusal inside
+ * getAuthHeaders(): that one is shared with every real Anthropic-protocol
+ * request, and blanket-rejecting mirrored keys there would break inference for
+ * exactly the DeepSeek and OpenCode users this protects. A `purpose` parameter
+ * would work equally well mechanically, but it puts the decision at the call
+ * site where it can be omitted by accident; a distinctly named function makes
+ * "which of the two is this?" visible in the caller and in review.
+ *
+ * Failing closed means no auth header, not no request — each caller decides.
+ * GrowthBook skips its HTTP init entirely and serves LOCAL_GATE_DEFAULTS, the
+ * 1P exporter POSTs unauthenticated (the same path it takes before the trust
+ * dialog), the BigQuery exporter and its opt-out probe skip the export, the
+ * account probes skip their cache warm. The telemetry callers additionally
+ * cannot reach the network without their own opt-in
+ * (OCC_ENABLE_GROWTHBOOK / OCC_ENABLE_1P_TELEMETRY /
+ * CLAUDE_CODE_ENABLE_TELEMETRY); the account probes have no such gate, which
+ * is why the check has to live here rather than alongside those switches.
+ */
+export function getFirstPartyTelemetryAuthHeaders(): AuthHeaders {
+  const auth = getAuthHeaders()
+  if (auth.error) {
+    return auth
+  }
+  if (isThirdPartyMirroredApiKey(auth.headers['x-api-key'])) {
+    return {
+      headers: {},
+      error:
+        'ANTHROPIC_API_KEY holds a third-party credential mirrored by this session',
+    }
+  }
+  return auth
 }
 
 /**

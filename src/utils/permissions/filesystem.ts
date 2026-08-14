@@ -252,7 +252,12 @@ function isClaudeConfigFilePath(filePath: string): boolean {
 
   // Check if file is within .claude/commands or .claude/agents directories
   // using proper path segment validation (not string matching with includes())
-  // pathInWorkingPath now handles case-insensitive comparison to prevent bypasses
+  //
+  // Folding (pathInWorkingPath's default) is the safe direction HERE, unlike in
+  // pathInAllowedWorkingPath: a hit means "always ask before editing", so
+  // matching more spellings can only add prompts. `.cLauDe/commands/x` is the
+  // same file on macOS and Windows, and it must not become auto-editable by
+  // re-casing the request.
   const commandsDir = join(getOriginalCwd(), PROJECT_DIR_NAME, 'commands')
   const agentsDir = join(getOriginalCwd(), PROJECT_DIR_NAME, 'agents')
   const skillsDir = join(getOriginalCwd(), PROJECT_DIR_NAME, 'skills')
@@ -722,33 +727,84 @@ export function pathInAllowedWorkingPath(
 
   // All paths must be within allowed working paths
   // If any resolved path is outside, deny access
+  //
+  // caseFold: false — this is the auto-allow gate, so a fold here GRANTS rather
+  // than restricts. With folding on, `/home/u/PROJ/secrets` resolves as inside
+  // the working directory `/home/u/proj` and is edited without a prompt; on
+  // Linux those are two unrelated directories and only one of them is in the
+  // session. Upstream marks this exact call site, and only this one, the same
+  // way. On a case-insensitive filesystem the cost is the opposite mistake — a
+  // miscased spelling of a path that IS inside prompts instead of
+  // auto-allowing — which getPathsForPermissionCheck() largely absorbs by
+  // resolving symlinks to the on-disk spelling, and which asks rather than
+  // grants when it does not.
   return pathsToCheck.every(pathToCheck =>
     workingPaths.some(workingPath =>
-      pathInWorkingPath(pathToCheck, workingPath),
+      pathInWorkingPath(pathToCheck, workingPath, { caseFold: false }),
     ),
   )
 }
 
-export function pathInWorkingPath(path: string, workingPath: string): boolean {
+/**
+ * Whether `path` is `workingPath` or lives underneath it.
+ *
+ * `caseFold` decides whether `/home/u/PROJ/x` counts as inside `/home/u/proj`,
+ * and there is no answer that is safe for every caller — which direction is the
+ * conservative one depends entirely on what the caller does with `true`:
+ *
+ *   - Callers asking "is this one of MY dangerous directories" (`.claude/`,
+ *     `.occ/`, a sandbox deny entry) want folding ON. A hit there means "be
+ *     more careful", so folding can only add caution, and on a case-insensitive
+ *     filesystem `.cLauDe/settings.json` genuinely IS the file being protected.
+ *     This is the default, so an unannotated call gets the cautious answer.
+ *
+ *   - Callers asking "may I proceed without asking" — pathInAllowedWorkingPath
+ *     below is the one that matters — must pass `caseFold: false`. Folding
+ *     there is a grant: on a case-sensitive filesystem `/home/u/PROJ` and
+ *     `/home/u/proj` are two different directories, only one of which the user
+ *     put in the session, and folding auto-approves writes to the other.
+ *
+ * The `/private/var` and `/private/tmp` rewrites follow the same switch, so a
+ * folded comparison also tolerates `/PRIVATE/VAR/...`; an unfolded one treats
+ * that as the distinct path it is on a case-sensitive filesystem.
+ *
+ * Same shape and same defaults as upstream, which likewise marks exactly one
+ * call site (its pathInAllowedWorkingPath) as non-folding.
+ */
+export function pathInWorkingPath(
+  path: string,
+  workingPath: string,
+  options: { caseFold?: boolean } = {},
+): boolean {
+  // `?? true` rather than a default-destructured object: `pathInWorkingPath(a,
+  // b, {})` must not silently mean "case-sensitive". Every omission is a
+  // request for the cautious answer.
+  const caseFold = options.caseFold ?? true
   const absolutePath = expandPath(path)
   const absoluteWorkingPath = expandPath(workingPath)
 
   // On macOS, handle common symlink issues:
   // - /var -> /private/var
   // - /tmp -> /private/tmp
+  const privateVar = caseFold ? /^\/private\/var\//i : /^\/private\/var\//
+  const privateTmp = caseFold
+    ? /^\/private\/tmp(\/|$)/i
+    : /^\/private\/tmp(\/|$)/
   const normalizedPath = absolutePath
-    .replace(/^\/private\/var\//, '/var/')
-    .replace(/^\/private\/tmp(\/|$)/, '/tmp$1')
+    .replace(privateVar, '/var/')
+    .replace(privateTmp, '/tmp$1')
   const normalizedWorkingPath = absoluteWorkingPath
-    .replace(/^\/private\/var\//, '/var/')
-    .replace(/^\/private\/tmp(\/|$)/, '/tmp$1')
+    .replace(privateVar, '/var/')
+    .replace(privateTmp, '/tmp$1')
 
   // Normalize case for case-insensitive comparison to prevent bypassing security
   // checks on case-insensitive filesystems (macOS/Windows) like .cLauDe/CoMmAnDs
-  const caseNormalizedPath = normalizeCaseForComparison(normalizedPath)
-  const caseNormalizedWorkingPath = normalizeCaseForComparison(
-    normalizedWorkingPath,
-  )
+  const caseNormalizedPath = caseFold
+    ? normalizeCaseForComparison(normalizedPath)
+    : normalizedPath
+  const caseNormalizedWorkingPath = caseFold
+    ? normalizeCaseForComparison(normalizedWorkingPath)
+    : normalizedWorkingPath
 
   // Use cross-platform relative path helper
   const relative = relativePath(caseNormalizedWorkingPath, caseNormalizedPath)
@@ -1016,15 +1072,52 @@ function getCompiledPatternsByRoot(
   )
   const compiled: CompiledRootPatterns = []
   for (const [root, patternMap] of patternsByRoot.entries()) {
-    // Transform patterns for the ignore library: remove /** suffix — the
-    // library treats 'path' as matching the path itself and everything inside
     const patterns = Array.from(patternMap.keys()).map(pattern =>
-      pattern.endsWith('/**') ? pattern.slice(0, -3) : pattern,
+      stripTrailingGlobstar(pattern, behavior === 'allow'),
     )
     compiled.push({ root, patternMap, ig: ignore().add(patterns) })
   }
   byKind.set(cacheKey, compiled)
   return compiled
+}
+
+/**
+ * Transform a rule pattern for the ignore library: drop the `/**` suffix — the
+ * library treats 'path' as matching the path itself and everything inside.
+ *
+ * `anchorToRoot` (official parity: true only for `allow`) additionally pins a
+ * bare directory name to the rule's root. Gitignore semantics make a pattern
+ * with no interior separator a *basename* pattern that matches at any depth,
+ * so `Edit(dist/**)` without anchoring also grants `node_modules/x/dist/**`.
+ * Deny and ask keep the unanchored form on purpose — there the match-anywhere
+ * reading is the safe one.
+ *
+ * Patterns that already contain a separator are anchored by gitignore itself,
+ * and `!`/`#` prefixes must keep their leading character, so both are left
+ * alone.
+ *
+ * KNOWN DIVERGENCE from official: a pattern that is *only* `/**` still
+ * collapses to the empty string here, which the ignore library discards — so
+ * a rule spelled `Edit(/**)` matches nothing at all. Official keeps it as
+ * `/**` (match everything under the root). Left alone deliberately: repairing
+ * it would also revive `allow: ["Edit(/**)"]` into a blanket grant, and this
+ * change set is scoped to tightening deny/ask.
+ */
+function stripTrailingGlobstar(pattern: string, anchorToRoot: boolean): string {
+  if (!pattern.endsWith('/**')) {
+    return pattern
+  }
+  const withoutSuffix = pattern.slice(0, -3)
+  if (
+    !anchorToRoot ||
+    // Nothing to anchor: the pattern was slashes only.
+    !/[^/]/.test(withoutSuffix) ||
+    withoutSuffix.includes('/') ||
+    /^[!#]/.test(withoutSuffix)
+  ) {
+    return withoutSuffix
+  }
+  return `/${withoutSuffix}`
 }
 
 export function matchingRuleForInput(
@@ -1040,6 +1133,18 @@ export function matchingRuleForInput(
     fileAbsolutePath = windowsPathToPosixPath(fileAbsolutePath)
   }
 
+  // On Windows the filesystem is case-insensitive, so a deny/ask rule must not
+  // be sidesteppable by re-casing the request (`SECRETS/key` vs
+  // `deny: ["Read(secrets/**)"]`). Folding is scoped to Windows and to
+  // deny/ask on purpose: doing it for allow would grant more than the rule
+  // spells out, and doing it on case-sensitive filesystems would conflate
+  // genuinely different files.
+  const caseFold = getPlatform() === 'windows' && behavior !== 'allow'
+  const absolutePath = fileAbsolutePath ?? getCwd()
+  const comparablePath = caseFold
+    ? normalizeCaseForComparison(absolutePath)
+    : absolutePath
+
   // Check each root for a matching pattern
   for (const { root, patternMap, ig } of getCompiledPatternsByRoot(
     toolPermissionContext,
@@ -1047,9 +1152,10 @@ export function matchingRuleForInput(
     behavior,
   )) {
     // Use cross-platform relative path helper for POSIX-style patterns
+    const rootPath = root ?? getCwd()
     const relativePathStr = relativePath(
-      root ?? getCwd(),
-      fileAbsolutePath ?? getCwd(),
+      caseFold ? normalizeCaseForComparison(rootPath) : rootPath,
+      comparablePath,
     )
 
     if (relativePathStr.startsWith(`..${DIR_SEP}`)) {
@@ -1070,8 +1176,20 @@ export function matchingRuleForInput(
 
       // Check if this was a /** pattern we simplified
       const withWildcard = originalPattern + '/**'
-      if (patternMap.has(withWildcard)) {
+      if (
+        patternMap.has(withWildcard) &&
+        (originalPattern.includes('/') || behavior !== 'allow')
+      ) {
         return patternMap.get(withWildcard) ?? null
+      }
+
+      // Allow patterns get root-anchored ('dist/**' → '/dist'), so map the
+      // anchored form back to the rule key the pattern map is stored under.
+      if (originalPattern.startsWith('/')) {
+        const unanchored = originalPattern.slice(1) + '/**'
+        if (patternMap.has(unanchored)) {
+          return patternMap.get(unanchored) ?? null
+        }
       }
 
       return patternMap.get(originalPattern) ?? null
@@ -1080,6 +1198,101 @@ export function matchingRuleForInput(
 
   // No matching rule found
   return null
+}
+
+/**
+ * Platform symlinks that are part of the OS layout rather than something the
+ * model can create: on macOS /tmp, /var and /etc are symlinks into /private,
+ * and some distros symlink /bin → /usr/bin. `getPathsForPermissionCheck`
+ * reports both spellings, so without this an allow rule written against /tmp
+ * would fail the all-paths check purely because the resolved twin spells the
+ * same directory differently.
+ *
+ * Resolved lazily and cached — the mapping is a property of the machine.
+ */
+const CANDIDATE_TRUSTED_SYMLINKS: ReadonlyArray<readonly [string, string]> = [
+  ['/private/tmp', '/tmp'],
+  ['/private/var', '/var'],
+  ['/private/etc', '/etc'],
+  ['/usr/bin', '/bin'],
+  ['/usr/lib', '/lib'],
+  ['/usr/sbin', '/sbin'],
+]
+let trustedSymlinkEquivalences: Map<string, string> | undefined
+
+function getTrustedSymlinkEquivalences(): Map<string, string> {
+  if (trustedSymlinkEquivalences !== undefined) {
+    return trustedSymlinkEquivalences
+  }
+  const equivalences = new Map<string, string>()
+  const fsImpl = getFsImplementation()
+  for (const [resolved, alias] of CANDIDATE_TRUSTED_SYMLINKS) {
+    try {
+      if (fsImpl.realpathSync(alias) === resolved) {
+        equivalences.set(resolved, alias)
+      }
+    } catch {
+      // Alias missing on this machine — nothing to normalize.
+    }
+  }
+  trustedSymlinkEquivalences = equivalences
+  return equivalences
+}
+
+/**
+ * Rewrite `/private/tmp/x` back to `/tmp/x` when the two really are the same
+ * directory on this machine. Returns the path unchanged otherwise.
+ */
+function normalizeTrustedSymlink(path: string): string {
+  for (const [resolved, alias] of getTrustedSymlinkEquivalences()) {
+    if (path === resolved || path.startsWith(resolved + sep)) {
+      return alias + path.slice(resolved.length)
+    }
+  }
+  return path
+}
+
+/**
+ * Find an allow rule that covers EVERY path spelling of the request.
+ *
+ * SECURITY: `getPathsForPermissionCheck` returns the literal path plus every
+ * symlink target it resolves to. Deny and ask already iterate that list, so a
+ * denied file stays denied through a symlink. Allow must use the opposite
+ * quantifier — *all* spellings must be covered — or `allow: ["Edit(src/**)"]`
+ * plus `src/link -> ~/other-repo/.env` auto-approves a write outside the
+ * project. Returns the rule that matched the first path, or null if any path
+ * is uncovered.
+ */
+function matchingAllowRuleForAllPaths(
+  pathsToCheck: readonly string[],
+  toolPermissionContext: ToolPermissionContext,
+  toolType: 'edit' | 'read',
+): PermissionRule | null {
+  let firstMatch: PermissionRule | null = null
+  for (const pathToCheck of pathsToCheck) {
+    let rule = matchingRuleForInput(
+      pathToCheck,
+      toolPermissionContext,
+      toolType,
+      'allow',
+    )
+    if (!rule) {
+      const normalized = normalizeTrustedSymlink(pathToCheck)
+      if (normalized !== pathToCheck) {
+        rule = matchingRuleForInput(
+          normalized,
+          toolPermissionContext,
+          toolType,
+          'allow',
+        )
+      }
+    }
+    if (!rule) {
+      return null
+    }
+    firstMatch ??= rule
+  }
+  return firstMatch
 }
 
 /**
@@ -1215,12 +1428,12 @@ export function checkReadPermissionForTool(
     return internalReadResult
   }
 
-  // 8. Check for allow rules
-  const allowRule = matchingRuleForInput(
-    path,
+  // 8. Check for allow rules — every path spelling must be covered, see
+  // matchingAllowRuleForAllPaths.
+  const allowRule = matchingAllowRuleForAllPaths(
+    pathsToCheck,
     toolPermissionContext,
     'read',
-    'allow',
   )
   if (allowRule) {
     return {
@@ -1315,8 +1528,10 @@ export function checkWritePermissionForTool<Input extends AnyObject>(
   // write-allow conversion), that rule would be found first and its source check
   // below would fail. Scope the search to session-only rules so the dialog's
   // "allow Claude to edit its own settings for this session" option actually works.
-  const occFolderAllowRule = matchingRuleForInput(
-    path,
+  // Same all-paths quantifier as step 4: a symlink under .occ/skills/x/ must
+  // not turn this session-scoped grant into a write outside the config root.
+  const occFolderAllowRule = matchingAllowRuleForAllPaths(
+    pathsToCheck,
     {
       ...toolPermissionContext,
       alwaysAllowRules: {
@@ -1324,7 +1539,6 @@ export function checkWritePermissionForTool<Input extends AnyObject>(
       },
     },
     'edit',
-    'allow',
   )
   if (occFolderAllowRule) {
     // Accept broad project/global occ patterns and narrowed skill patterns.
@@ -1432,12 +1646,12 @@ export function checkWritePermissionForTool<Input extends AnyObject>(
     }
   }
 
-  // 4. Check for allow rules
-  const allowRule = matchingRuleForInput(
-    path,
+  // 4. Check for allow rules — every path spelling must be covered, see
+  // matchingAllowRuleForAllPaths.
+  const allowRule = matchingAllowRuleForAllPaths(
+    pathsToCheck,
     toolPermissionContext,
     'edit',
-    'allow',
   )
   if (allowRule) {
     return {

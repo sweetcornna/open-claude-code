@@ -20,6 +20,7 @@ import {
   checkAndRefreshOAuthTokenIfNeeded,
   getAnthropicApiKeyWithSource,
   getClaudeAIOAuthTokens,
+  isThirdPartyMirroredApiKey,
 } from '../../utils/auth/auth.js'
 import { registerCleanup } from '../../utils/process/cleanupRegistry.js'
 import { logForDebugging } from '../../utils/telemetry/debug.js'
@@ -162,8 +163,17 @@ export async function waitForRemoteManagedSettingsToLoad(): Promise<void> {
  * Get auth headers for remote settings without calling getSettings()
  * This avoids circular dependencies during settings loading
  * Supports both API key and OAuth authentication
+ *
+ * API-key-first is upstream's own order for this endpoint — cc 2.1.228 resolves
+ * it the same way — and it is NOT the order utils/network/http.ts's
+ * similarly-shaped getAuthHeaders() uses. Keeping it means this function cannot
+ * simply delegate to getFirstPartyTelemetryAuthHeaders(): that one reaches
+ * getAnthropicApiKey() with the apiKeyHelper lookup enabled, which reads
+ * getSettings_DEPRECATED() and would close exactly the settings-loading cycle
+ * this local copy exists to avoid. The mirrored-credential refusal below is the
+ * part of it that does transfer.
  */
-function getRemoteSettingsAuthHeaders(): {
+export function getRemoteSettingsAuthHeaders(): {
   headers: Record<string, string>
   error?: string
 } {
@@ -174,7 +184,17 @@ function getRemoteSettingsAuthHeaders(): {
     const { key: apiKey } = getAnthropicApiKeyWithSource({
       skipRetrievingKeyFromApiKeyHelper: true,
     })
-    if (apiKey) {
+    // ANTHROPIC_API_KEY is not always Anthropic's key: the DeepSeek and
+    // OpenCode wires mirror their own credential into it (an OpenCode one is a
+    // live OAuth access token). This request goes to api.anthropic.com on occ's
+    // own behalf, so it must not carry one. isRemoteManagedSettingsEligible()
+    // already refuses those sessions, but it decides on ANTHROPIC_BASE_URL
+    // while the leak rides on ANTHROPIC_API_KEY — two different signals, and
+    // only the second one is what actually gets sent. Checking at the point the
+    // header is built keeps the two from drifting apart.
+    // Falls through to OAuth rather than erroring: a real Claude.ai token in
+    // the same session is the user's own Anthropic credential.
+    if (apiKey && !isThirdPartyMirroredApiKey(apiKey)) {
       return {
         headers: {
           'x-api-key': apiKey,

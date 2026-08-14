@@ -59,6 +59,7 @@ import {
   getRuleByContentsForTool,
 } from 'src/utils/permissions/permissions.js'
 import {
+  normalizeShellWhitespace,
   parsePermissionRule,
   type ShellPermissionRule,
   matchWildcardPattern as sharedMatchWildcardPattern,
@@ -790,7 +791,12 @@ function filterRulesByContentsMatchingInput(
   {
     stripAllEnvVars = false,
     skipCompoundCheck = false,
-  }: { stripAllEnvVars?: boolean; skipCompoundCheck?: boolean } = {},
+    ruleBehavior = 'allow',
+  }: {
+    stripAllEnvVars?: boolean
+    skipCompoundCheck?: boolean
+    ruleBehavior?: 'allow' | 'deny' | 'ask'
+  } = {},
 ): PermissionRule[] {
   const command = input.command.trim()
 
@@ -883,11 +889,17 @@ function filterRulesByContentsMatchingInput(
         switch (bashRule.type) {
           case 'exact':
             return bashRule.command === cmdToMatch
-          case 'prefix':
+          case 'prefix': {
+            // Fold whitespace runs on BOTH sides before comparing. The command
+            // side is normally already normalized by the AST re-serialization
+            // in extractOutputRedirections, but the rule side never is —
+            // `Bash(git  push:*)` would otherwise name no command at all.
+            const rulePrefix = normalizeShellWhitespace(bashRule.prefix)
+            const candidate = normalizeShellWhitespace(cmdToMatch)
             switch (matchMode) {
               // In 'exact' mode, only return true if the command exactly matches the prefix rule
               case 'exact':
-                return bashRule.prefix === cmdToMatch
+                return rulePrefix === candidate
               case 'prefix': {
                 // SECURITY: Don't allow prefix rules to match compound commands.
                 // e.g., Bash(cd:*) must NOT match "cd /path && python3 evil.py".
@@ -901,10 +913,10 @@ function filterRulesByContentsMatchingInput(
                 }
                 // Ensure word boundary: prefix must be followed by space or end of string
                 // This prevents "ls:*" from matching "lsof" or "lsattr"
-                if (cmdToMatch === bashRule.prefix) {
+                if (candidate === rulePrefix) {
                   return true
                 }
-                if (cmdToMatch.startsWith(bashRule.prefix + ' ')) {
+                if (candidate.startsWith(rulePrefix + ' ')) {
                   return true
                 }
                 // Also match "xargs <prefix>" for bare xargs with no flags.
@@ -912,14 +924,15 @@ function filterRulesByContentsMatchingInput(
                 // and deny rules like Bash(rm:*) to block "xargs rm file".
                 // Natural word-boundary: "xargs -n1 grep" does NOT start with
                 // "xargs grep " so flagged xargs invocations are not matched.
-                const xargsPrefix = 'xargs ' + bashRule.prefix
-                if (cmdToMatch === xargsPrefix) {
+                const xargsPrefix = 'xargs ' + rulePrefix
+                if (candidate === xargsPrefix) {
                   return true
                 }
-                return cmdToMatch.startsWith(xargsPrefix + ' ')
+                return candidate.startsWith(xargsPrefix + ' ')
               }
             }
             break
+          }
           case 'wildcard':
             // SECURITY FIX: In exact match mode, wildcards must NOT match because we're
             // checking the full unparsed command. Wildcard matching on unparsed commands
@@ -934,8 +947,34 @@ function filterRulesByContentsMatchingInput(
             if (isCompoundCommand.get(cmdToMatch)) {
               return false
             }
-            // In prefix mode (after splitting), wildcards can safely match subcommands
-            return matchWildcardPattern(bashRule.pattern, cmdToMatch)
+            // In prefix mode (after splitting), wildcards can safely match
+            // subcommands. Whitespace is folded on both sides so a rule typed
+            // `rm  -rf *` still names the same command as `rm -rf *`.
+            if (
+              sharedMatchWildcardPattern(
+                bashRule.pattern,
+                cmdToMatch,
+                false,
+                true,
+              )
+            ) {
+              return true
+            }
+            // SECURITY: retry against "xargs <pattern>" so a deny/ask rule
+            // written as `Bash(rm *)` also covers `xargs rm file`. The legacy
+            // `Bash(rm:*)` spelling has always done this in the prefix branch
+            // above; the newer wildcard spelling did not, so switching syntax
+            // silently opened a bypass. Kept to deny/ask only — extending it
+            // to allow rules would widen what is auto-approved.
+            if (ruleBehavior !== 'deny' && ruleBehavior !== 'ask') {
+              return false
+            }
+            return sharedMatchWildcardPattern(
+              `xargs ${bashRule.pattern}`,
+              cmdToMatch,
+              false,
+              true,
+            )
         }
       })
     })
@@ -959,7 +998,7 @@ function matchingRulesForInput(
     input,
     denyRuleByContents,
     matchMode,
-    { stripAllEnvVars: true, skipCompoundCheck: true },
+    { stripAllEnvVars: true, skipCompoundCheck: true, ruleBehavior: 'deny' },
   )
 
   const askRuleByContents = getRuleByContentsForTool(
@@ -971,7 +1010,7 @@ function matchingRulesForInput(
     input,
     askRuleByContents,
     matchMode,
-    { stripAllEnvVars: true, skipCompoundCheck: true },
+    { stripAllEnvVars: true, skipCompoundCheck: true, ruleBehavior: 'ask' },
   )
 
   const allowRuleByContents = getRuleByContentsForTool(
@@ -983,7 +1022,7 @@ function matchingRulesForInput(
     input,
     allowRuleByContents,
     matchMode,
-    { skipCompoundCheck },
+    { skipCompoundCheck, ruleBehavior: 'allow' },
   )
 
   return {

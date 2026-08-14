@@ -5,7 +5,7 @@ import {
   hasProfileScope,
   isClaudeAISubscriber,
 } from '../../utils/auth/auth.js'
-import { getAuthHeaders } from '../../utils/network/http.js'
+import { getFirstPartyTelemetryAuthHeaders } from '../../utils/network/http.js'
 import { getClaudeCodeUserAgent } from '../../utils/network/userAgent.js'
 import { isOAuthTokenExpired } from '../oauth/client.js'
 
@@ -31,6 +31,14 @@ export type Utilization = {
 }
 
 export async function fetchUtilization(): Promise<Utilization | null> {
+  // This asks Anthropic how much of an Anthropic subscription has been used, so
+  // it is meaningless without an Anthropic subscription. A DeepSeek/OpenCode
+  // session fails this check — isAnthropicAuthEnabled() is false once
+  // OPENAI_BASE_URL or an external ANTHROPIC_API_KEY is present — and returns
+  // an empty utilization, which /usage renders as "no rate limit data" and
+  // /extra-usage treats as "unknown, let the user ask". That is the right
+  // answer; the point of the guard below is that it also keeps a mirrored
+  // third-party credential away from the auth chain.
   if (!isClaudeAISubscriber() || !hasProfileScope()) {
     return {}
   }
@@ -41,7 +49,12 @@ export async function fetchUtilization(): Promise<Utilization | null> {
     return null
   }
 
-  const authResult = getAuthHeaders()
+  // Reaching here implies isClaudeAISubscriber(), so this resolves the OAuth
+  // branch and the first-party variant is a no-op. Using it anyway means the
+  // "is this Anthropic's credential?" question is asked by the same helper
+  // everywhere, instead of being implied by a predicate three lines up that a
+  // later edit could weaken without anyone connecting the two.
+  const authResult = getFirstPartyTelemetryAuthHeaders()
   if (authResult.error) {
     throw new Error(`Auth error: ${authResult.error}`)
   }

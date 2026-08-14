@@ -3,10 +3,57 @@ import {
   permissionRuleExtractPrefix,
   hasWildcards,
   matchWildcardPattern,
+  normalizeShellWhitespace,
   parsePermissionRule,
   suggestionForExactCommand,
   suggestionForPrefix,
 } from '../shellRuleMatching'
+
+// ─── whitespace folding (opt-in) ────────────────────────────────────────
+
+describe('normalizeShellWhitespace', () => {
+  test('folds runs of spaces and tabs', () => {
+    expect(normalizeShellWhitespace('rm  -rf\t\t/')).toBe('rm -rf /')
+  })
+
+  test('leaves newlines alone — they are significant in heredocs', () => {
+    expect(normalizeShellWhitespace('a\n\nb')).toBe('a\n\nb')
+  })
+})
+
+describe('matchWildcardPattern whitespace folding', () => {
+  test('is off by default so path and sandbox callers are unaffected', () => {
+    expect(matchWildcardPattern('rm  -rf *', 'rm -rf /')).toBe(false)
+    expect(matchWildcardPattern('rm -rf *', 'rm  -rf  /')).toBe(false)
+    // Real callers pass file paths, where a doubled space is part of the name.
+    expect(matchWildcardPattern('/a/b  c/*', '/a/b c/d.ts')).toBe(false)
+  })
+
+  test('folds both sides when enabled', () => {
+    expect(matchWildcardPattern('rm  -rf *', 'rm -rf /', false, true)).toBe(
+      true,
+    )
+    expect(matchWildcardPattern('rm -rf *', 'rm  -rf  /', false, true)).toBe(
+      true,
+    )
+  })
+
+  test('folding does not blur distinct commands', () => {
+    expect(matchWildcardPattern('rm -rf *', 'rmdir /tmp', false, true)).toBe(
+      false,
+    )
+  })
+
+  test('folded and unfolded results are cached separately', () => {
+    expect(matchWildcardPattern('rm  -rf *', 'rm -rf /', false, true)).toBe(
+      true,
+    )
+    expect(matchWildcardPattern('rm  -rf *', 'rm -rf /')).toBe(false)
+    expect(matchWildcardPattern('rm  -rf *', 'rm -rf /', false, true)).toBe(
+      true,
+    )
+  })
+})
 
 // ─── permissionRuleExtractPrefix ────────────────────────────────────────
 

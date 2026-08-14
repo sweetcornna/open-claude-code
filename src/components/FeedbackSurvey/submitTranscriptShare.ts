@@ -4,6 +4,10 @@ import type { Message } from '../../types/message.js'
 import { checkAndRefreshOAuthTokenIfNeeded } from '../../utils/auth/auth.js'
 import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { errorMessage } from '../../utils/runtime/errors.js'
+import {
+  isBlockedByMirroredCredential,
+  MIRRORED_CREDENTIAL_NOTICE,
+} from '../../utils/auth/firstPartyDataSharing.js'
 import { getAuthHeaders, getUserAgent } from '../../utils/network/http.js'
 import { normalizeMessagesForAPI } from '../../utils/messages.js'
 import {
@@ -18,6 +22,11 @@ import { redactSensitiveInfo } from '../Feedback.js'
 type TranscriptShareResult = {
   success: boolean
   transcriptId?: string
+  /**
+   * Set when the share was declined locally rather than attempted and failed.
+   * Callers may show it; the send is already suppressed either way.
+   */
+  blockedReason?: string
 }
 
 export type TranscriptShareTrigger =
@@ -31,6 +40,25 @@ export async function submitTranscriptShare(
   trigger: TranscriptShareTrigger,
   appearanceId: string,
 ): Promise<TranscriptShareResult> {
+  // Checked before anything is collected, not just before the POST: this
+  // function reads the whole conversation, every subagent transcript and the
+  // raw JSONL off disk, and there is no reason to assemble that only to drop it.
+  //
+  // The POST below is hardcoded to api.anthropic.com. In a DeepSeek/OpenCode
+  // session getAuthHeaders() resolves the mirrored third-party credential
+  // (isClaudeAISubscriber() is false once the wire is applied), so the
+  // pre-existing path sent *both* that secret and the full transcript of a
+  // conversation held with another vendor's model to Anthropic — and, having no
+  // valid first-party credential, got a 401 for it. Declining is strictly
+  // better than a guaranteed-failing upload.
+  if (isBlockedByMirroredCredential()) {
+    logForDebugging(
+      `Transcript share declined: ${MIRRORED_CREDENTIAL_NOTICE}`,
+      { level: 'info' },
+    )
+    return { success: false, blockedReason: MIRRORED_CREDENTIAL_NOTICE }
+  }
+
   try {
     logForDebugging('Collecting transcript for sharing', { level: 'info' })
 

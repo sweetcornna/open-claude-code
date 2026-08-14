@@ -11,15 +11,27 @@ const {
   getAskRuleForTool,
   getDenyRuleForAgent,
   filterDeniedAgents,
+  toolAlwaysAllowedRule,
 } = await import('../permissions')
 
-function makeContext(opts: { denyRules?: string[]; askRules?: string[] }) {
+function makeContext(opts: {
+  denyRules?: string[]
+  askRules?: string[]
+  allowRules?: string[]
+}) {
   const ctx = getEmptyToolPermissionContext()
   const deny: Record<string, string[]> = {}
   const ask: Record<string, string[]> = {}
+  const allow: Record<string, string[]> = {}
   if (opts.denyRules?.length) deny.localSettings = opts.denyRules
   if (opts.askRules?.length) ask.localSettings = opts.askRules
-  return { ...ctx, alwaysDenyRules: deny, alwaysAskRules: ask } as any
+  if (opts.allowRules?.length) allow.localSettings = opts.allowRules
+  return {
+    ...ctx,
+    alwaysDenyRules: deny,
+    alwaysAskRules: ask,
+    alwaysAllowRules: allow,
+  } as any
 }
 
 function makeTool(
@@ -64,6 +76,69 @@ describe('getAskRuleForTool', () => {
   test('returns null for non-matching tool', () => {
     const ctx = makeContext({ askRules: ['Write'] })
     expect(getAskRuleForTool(ctx, makeTool('Bash'))).toBeNull()
+  })
+})
+
+// Wildcard tool names parse and render in /permissions but used to match
+// nothing, so `deny: ["mcp__github__get_*"]` — the string the official
+// rule validator hands out as an example — blocked no tool at all.
+describe('wildcard tool names in deny/ask rules', () => {
+  const githubGetIssue = makeTool('get_issue', {
+    serverName: 'github',
+    toolName: 'get_issue',
+  })
+
+  test('deny mcp__github__get_* blocks mcp__github__get_issue', () => {
+    const ctx = makeContext({ denyRules: ['mcp__github__get_*'] })
+    const result = getDenyRuleForTool(ctx, githubGetIssue)
+    expect(result).not.toBeNull()
+    expect(result!.ruleValue.toolName).toBe('mcp__github__get_*')
+  })
+
+  test('deny mcp glob does not reach a non-matching tool on the same server', () => {
+    const ctx = makeContext({ denyRules: ['mcp__github__get_*'] })
+    const createIssue = makeTool('create_issue', {
+      serverName: 'github',
+      toolName: 'create_issue',
+    })
+    expect(getDenyRuleForTool(ctx, createIssue)).toBeNull()
+  })
+
+  test('deny mcp glob does not cross server boundaries', () => {
+    const ctx = makeContext({ denyRules: ['mcp__github__get_*'] })
+    const otherServer = makeTool('get_issue', {
+      serverName: 'gitlab',
+      toolName: 'get_issue',
+    })
+    expect(getDenyRuleForTool(ctx, otherServer)).toBeNull()
+  })
+
+  test('deny Web* blocks WebFetch and WebSearch but not Write', () => {
+    const ctx = makeContext({ denyRules: ['Web*'] })
+    expect(getDenyRuleForTool(ctx, makeTool('WebFetch'))).not.toBeNull()
+    expect(getDenyRuleForTool(ctx, makeTool('WebSearch'))).not.toBeNull()
+    expect(getDenyRuleForTool(ctx, makeTool('Write'))).toBeNull()
+  })
+
+  test('ask Web* asks for WebFetch', () => {
+    const ctx = makeContext({ askRules: ['Web*'] })
+    expect(getAskRuleForTool(ctx, makeTool('WebFetch'))).not.toBeNull()
+  })
+
+  test('glob metacharacters other than * stay literal', () => {
+    const ctx = makeContext({ denyRules: ['Web.*'] })
+    expect(getDenyRuleForTool(ctx, makeTool('WebFetch'))).toBeNull()
+    expect(getDenyRuleForTool(ctx, makeTool('Web.Fetch'))).not.toBeNull()
+  })
+
+  test('allow rules keep matching literally — globs must not widen a grant', () => {
+    const ctx = makeContext({ allowRules: ['Web*'] })
+    expect(toolAlwaysAllowedRule(ctx, makeTool('WebFetch'))).toBeNull()
+    // The two literal MCP shapes allow rules always supported still work.
+    const serverCtx = makeContext({ allowRules: ['mcp__github'] })
+    expect(toolAlwaysAllowedRule(serverCtx, githubGetIssue)).not.toBeNull()
+    const starCtx = makeContext({ allowRules: ['mcp__github__*'] })
+    expect(toolAlwaysAllowedRule(starCtx, githubGetIssue)).not.toBeNull()
   })
 })
 

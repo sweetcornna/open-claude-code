@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { getOauthConfig } from '../../constants/oauth.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config/config.js'
-import { getAuthHeaders } from '../../utils/network/http.js'
+import { getFirstPartyTelemetryAuthHeaders } from '../../utils/network/http.js'
 import { logError } from '../../utils/telemetry/log.js'
 import { getClaudeCodeUserAgent } from '../../utils/network/userAgent.js'
 
@@ -17,7 +17,15 @@ export async function fetchAndStoreClaudeCodeFirstTokenDate(): Promise<void> {
       return
     }
 
-    const authHeaders = getAuthHeaders()
+    // getOauthConfig().BASE_API_URL is api.anthropic.com — it is never derived
+    // from ANTHROPIC_BASE_URL — so this is a first-party request even in a
+    // session whose inference goes elsewhere. `occ login` runs with the
+    // provider wires already applied, and in a DeepSeek/OpenCode session
+    // isClaudeAISubscriber() is false (isAnthropicAuthEnabled() sees
+    // OPENAI_BASE_URL / an external ANTHROPIC_API_KEY), so getAuthHeaders()
+    // would take the x-api-key branch and hand the mirrored third-party
+    // credential to Anthropic. Failing closed just skips the cache warm-up.
+    const authHeaders = getFirstPartyTelemetryAuthHeaders()
     if (authHeaders.error) {
       logError(new Error(`Failed to get auth headers: ${authHeaders.error}`))
       return

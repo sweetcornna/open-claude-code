@@ -9,7 +9,10 @@ import {
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config/config.js'
 import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { errorMessage } from '../../utils/runtime/errors.js'
-import { getAuthHeaders, withOAuth401Retry } from '../../utils/network/http.js'
+import {
+  getFirstPartyTelemetryAuthHeaders,
+  withOAuth401Retry,
+} from '../../utils/network/http.js'
 import { logError } from '../../utils/telemetry/log.js'
 import { memoizeWithTTLAsync } from '../../utils/collections/memoize.js'
 import { isEssentialTrafficOnly } from '../../utils/auth/privacyLevel.js'
@@ -65,7 +68,16 @@ function getCachedMetricsStatus(): IdentityBoundMetricsCache | undefined {
  * This is wrapped by memoizeWithTTLAsync to add caching behavior
  */
 async function _fetchMetricsEnabled(): Promise<MetricsEnabledResponse> {
-  const authResult = getAuthHeaders()
+  // Same footing as the BigQuery export this gates: the endpoint below is
+  // hardcoded to api.anthropic.com, so a DeepSeek/OpenCode credential mirrored
+  // into ANTHROPIC_API_KEY must not travel with it. bigqueryExporter already
+  // refuses the export itself — this probe runs *before* that check and used to
+  // send the mirrored key one request earlier.
+  //
+  // Failing closed here surfaces as hasError:true from _checkMetricsEnabledAPI,
+  // which is not persisted to disk and makes the exporter skip. That is the
+  // same outcome as the network being unreachable.
+  const authResult = getFirstPartyTelemetryAuthHeaders()
   if (authResult.error) {
     throw new Error(`Auth error: ${authResult.error}`)
   }

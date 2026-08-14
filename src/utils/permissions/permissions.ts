@@ -233,13 +233,56 @@ export function getAskRules(context: ToolPermissionContext): PermissionRule[] {
 }
 
 /**
+ * Whether a rule's tool-name segment carries a glob.
+ */
+function toolNamePatternHasGlob(pattern: string): boolean {
+  return pattern.includes('*')
+}
+
+// Compiled tool-name glob cache. Rule sets are small, but getDenyRuleForTool /
+// getAskRuleForTool run on every tool use, so avoid recompiling per call.
+const toolNameGlobCache = new Map<string, RegExp>()
+const TOOL_NAME_GLOB_CACHE_MAX = 200
+
+/**
+ * Glob-match a permission rule tool name against a concrete tool name.
+ * `*` matches any run of characters; every other character is literal.
+ */
+function toolNameGlobMatches(pattern: string, toolName: string): boolean {
+  let regex = toolNameGlobCache.get(pattern)
+  if (!regex) {
+    regex = new RegExp(
+      `^${pattern
+        .split('*')
+        .map(segment => segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+        .join('.*')}$`,
+      's',
+    )
+    if (toolNameGlobCache.size >= TOOL_NAME_GLOB_CACHE_MAX) {
+      const oldest = toolNameGlobCache.keys().next().value
+      if (oldest !== undefined) toolNameGlobCache.delete(oldest)
+    }
+    toolNameGlobCache.set(pattern, regex)
+  }
+  return regex.test(toolName)
+}
+
+/**
  * Check if the entire tool matches a rule
  * For example, this matches "Bash" but not "Bash(prefix:*)" for BashTool
  * This also matches MCP tools with a server name, e.g. the rule "mcp__server1"
+ *
+ * `globMatching` enables `*` in the tool-name position — both for plain tool
+ * names ("Web*") and for the tool segment of an MCP name
+ * ("mcp__github__get_*"). Official parity: it is passed only from the deny and
+ * ask lookups, never from the allow lookup, so a wildcard tool name can only
+ * ever narrow what is permitted. Without it a rule like
+ * `deny: ["mcp__github__get_*"]` parses and displays but matches nothing.
  */
 function toolMatchesRule(
   tool: Pick<Tool, 'name' | 'mcpInfo'>,
   rule: PermissionRule,
+  { globMatching = false }: { globMatching?: boolean } = {},
 ): boolean {
   // Rule must not have content to match the entire tool
   if (rule.ruleValue.ruleContent !== undefined) {
@@ -257,6 +300,15 @@ function toolMatchesRule(
     return true
   }
 
+  // Whole-name glob: "Web*" matches "WebFetch"/"WebSearch".
+  if (
+    globMatching &&
+    toolNamePatternHasGlob(rule.ruleValue.toolName) &&
+    toolNameGlobMatches(rule.ruleValue.toolName, nameForRuleMatch)
+  ) {
+    return true
+  }
+
   // MCP server-level permission: rule "mcp__server1" matches tool "mcp__server1__tool1"
   // Also supports wildcard: rule "mcp__server1__*" matches all tools from server1
   const ruleInfo = mcpInfoFromString(rule.ruleValue.toolName)
@@ -265,8 +317,14 @@ function toolMatchesRule(
   return (
     ruleInfo !== null &&
     toolInfo !== null &&
-    (ruleInfo.toolName === undefined || ruleInfo.toolName === '*') &&
-    ruleInfo.serverName === toolInfo.serverName
+    ruleInfo.serverName === toolInfo.serverName &&
+    (ruleInfo.toolName === undefined ||
+      ruleInfo.toolName === '*' ||
+      // Glob inside the tool segment: "mcp__github__get_*".
+      (globMatching &&
+        toolInfo.toolName !== undefined &&
+        toolNamePatternHasGlob(ruleInfo.toolName) &&
+        toolNameGlobMatches(ruleInfo.toolName, toolInfo.toolName)))
   )
 }
 
@@ -290,7 +348,11 @@ export function getDenyRuleForTool(
   context: ToolPermissionContext,
   tool: Pick<Tool, 'name' | 'mcpInfo'>,
 ): PermissionRule | null {
-  return getDenyRules(context).find(rule => toolMatchesRule(tool, rule)) || null
+  return (
+    getDenyRules(context).find(rule =>
+      toolMatchesRule(tool, rule, { globMatching: true }),
+    ) || null
+  )
 }
 
 /**
@@ -300,7 +362,11 @@ export function getAskRuleForTool(
   context: ToolPermissionContext,
   tool: Pick<Tool, 'name' | 'mcpInfo'>,
 ): PermissionRule | null {
-  return getAskRules(context).find(rule => toolMatchesRule(tool, rule)) || null
+  return (
+    getAskRules(context).find(rule =>
+      toolMatchesRule(tool, rule, { globMatching: true }),
+    ) || null
+  )
 }
 
 /**

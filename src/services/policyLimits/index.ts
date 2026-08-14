@@ -26,6 +26,7 @@ import {
   checkAndRefreshOAuthTokenIfNeeded,
   getAnthropicApiKeyWithSource,
   getClaudeAIOAuthTokens,
+  isThirdPartyMirroredApiKey,
 } from '../../utils/auth/auth.js'
 import { registerCleanup } from '../../utils/process/cleanupRegistry.js'
 import { logForDebugging } from '../../utils/telemetry/debug.js'
@@ -214,10 +215,33 @@ export async function waitForPolicyLimitsToLoad(): Promise<void> {
 }
 
 /**
- * Get auth headers for policy limits without calling getSettings()
- * Supports both API key and OAuth authentication
+ * Auth headers for the policy-limits endpoint, resolved without calling
+ * getSettings().
+ *
+ * Named for this endpoint rather than `getAuthHeaders`, which is what it used
+ * to be called: utils/network/http.ts exports a function by that name whose
+ * precedence is the OPPOSITE of this one's — it prefers OAuth and only falls
+ * back to the API key — and two same-named, differently-ordered auth resolvers
+ * one import away from each other is how a caller ends up reasoning about the
+ * wrong one.
+ *
+ * The API-key-first order is kept because Console customers authenticate to the
+ * org-policy endpoints with their key, and consulting it first avoids a
+ * keychain-less session being answered by whatever stale OAuth token is lying
+ * around. It is the same order upstream still uses for the sibling
+ * remote-managed-settings fetch; upstream's own policy-limits path has since
+ * moved to its shared OAuth-first resolver, and occ cannot follow it there —
+ * that resolver routes through getAnthropicApiKey() with the apiKeyHelper
+ * lookup enabled, and the helper reads getSettings_DEPRECATED(), which is the
+ * one thing this service must not touch because it runs during settings
+ * loading. Same reason getFirstPartyTelemetryAuthHeaders() cannot simply be
+ * called here even though it is otherwise exactly the right predicate.
+ *
+ * What IS borrowed from getFirstPartyTelemetryAuthHeaders is the refusal below.
+ * This request is addressed to api.anthropic.com on occ's own behalf, so it must
+ * never carry a credential that belongs to somebody else.
  */
-function getAuthHeaders(): {
+export function getPolicyLimitsAuthHeaders(): {
   headers: Record<string, string>
   error?: string
 } {
@@ -226,7 +250,19 @@ function getAuthHeaders(): {
     const { key: apiKey } = getAnthropicApiKeyWithSource({
       skipRetrievingKeyFromApiKeyHelper: true,
     })
-    if (apiKey) {
+    // The DeepSeek and OpenCode wires mirror their own credential onto
+    // ANTHROPIC_API_KEY, so "there is an API key" does not mean "there is an
+    // Anthropic API key". isPolicyLimitsEligible() already refuses those
+    // sessions via isDirectAnthropicApi(), but that gate lives three call
+    // frames away from this header and reads a DIFFERENT signal
+    // (ANTHROPIC_BASE_URL): anything that resets that key after a wire mirrored
+    // itself — settings.env being re-applied, a user export — reopens the gate
+    // while the mirrored key is still in place. Checking it here means the
+    // secret cannot leave regardless of what the gate decides.
+    // Deliberately falls through to OAuth rather than erroring: a genuine
+    // Claude.ai token in the same session is still the user's own Anthropic
+    // credential and is the right thing to send.
+    if (apiKey && !isThirdPartyMirroredApiKey(apiKey)) {
       return {
         headers: {
           'x-api-key': apiKey,
@@ -296,7 +332,7 @@ async function fetchPolicyLimits(
   try {
     await checkAndRefreshOAuthTokenIfNeeded()
 
-    const authHeaders = getAuthHeaders()
+    const authHeaders = getPolicyLimitsAuthHeaders()
     if (authHeaders.error) {
       return {
         success: false,

@@ -133,10 +133,24 @@ export function isAnthropicAuthEnabled(): boolean {
     apiKeyHelper ||
     process.env.CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR
 
-  // Check if API key is from an external source (not managed by /login)
-  const { source: apiKeySource } = getAnthropicApiKeyWithSource({
-    skipRetrievingKeyFromApiKeyHelper: true,
-  })
+  // Check if API key is from an external source (not managed by /login).
+  //
+  // MUST stay wrapped: getAnthropicApiKeyWithSource() *throws* in the
+  // CI/NODE_ENV=test branch below (line ~340) when no credential is present,
+  // and this predicate is on the startup path — getOauthAccountInfo() →
+  // isAnthropicAuthEnabled() is awaited from init() via initUser(). Letting the
+  // throw escape rejected the Commander preAction hook and left the process
+  // alive but idle with zero output, i.e. `CI=1 occ mcp list` hung until it was
+  // SIGKILLed. A predicate that answers "is 1P auth usable" has nothing to
+  // report but `false` when the credential lookup itself fails.
+  let apiKeySource: ReturnType<typeof getAnthropicApiKeyWithSource>['source']
+  try {
+    apiKeySource = getAnthropicApiKeyWithSource({
+      skipRetrievingKeyFromApiKeyHelper: true,
+    }).source
+  } catch {
+    return false
+  }
   const hasExternalApiKey =
     apiKeySource === 'ANTHROPIC_API_KEY' || apiKeySource === 'apiKeyHelper'
 
@@ -261,9 +275,30 @@ export function hasAnthropicApiKeyAuth(): boolean {
  * approval list is for. (Deliberately not `getEffectiveSettingsEnv()`, which
  * would say the same thing but closes an import cycle from here.)
  */
+/**
+ * Whether `ANTHROPIC_API_KEY` currently holds a credential that belongs to
+ * some OTHER vendor, mirrored there by one of occ's provider wires.
+ *
+ * The DeepSeek and OpenCode wires both copy their own credential onto
+ * `ANTHROPIC_API_KEY` so the first-party client can talk to an
+ * Anthropic-compatible endpoint that is not Anthropic's. That is correct for
+ * inference — the key travels to the endpoint it was issued for — and wrong
+ * for anything occ sends to `api.anthropic.com` on its own behalf, which
+ * would hand a DeepSeek or OpenCode secret to a third party.
+ *
+ * Read it as "not Anthropic's key", not as "not a valid key". The inverse is
+ * NOT `isOccConfiguredAnthropicApiKey()`: that one answers "did occ put this
+ * here", which is also true for a genuine Anthropic key typed into the
+ * Anthropic-compatible setup wizard.
+ */
+export function isThirdPartyMirroredApiKey(
+  apiKey: string | undefined,
+): boolean {
+  return isDeepSeekMirroredApiKey(apiKey) || isOpencodeMirroredApiKey(apiKey)
+}
+
 export function isOccConfiguredAnthropicApiKey(apiKey: string): boolean {
-  if (isDeepSeekMirroredApiKey(apiKey)) return true
-  if (isOpencodeMirroredApiKey(apiKey)) return true
+  if (isThirdPartyMirroredApiKey(apiKey)) return true
   const fromUserSettings =
     getSettingsForSource('userSettings')?.env?.ANTHROPIC_API_KEY
   if (fromUserSettings === apiKey) return true
