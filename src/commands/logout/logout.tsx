@@ -100,7 +100,20 @@ export async function performLogout({ clearOnboarding = false }: { clearOnboardi
 
   await clearAuthRelatedCaches();
   saveGlobalConfig(current => {
-    const updated = { ...current };
+    // `cachedGrowthBookFeatures` goes with the account that fetched it.
+    // clearAuthRelatedCaches() above resets only the in-memory map, which is
+    // how a signed-out install kept answering feature gates from the previous
+    // account's Anthropic experiment assignment — across restarts, with no way
+    // for the user to see it or clear it. Statsig's cache is the same payload
+    // by an older name and is read by the same gate helpers.
+    // `undefined` rather than a destructuring delete: saveGlobalConfig's test
+    // path Object.assign()s the result onto the existing object, where a
+    // removed key is simply not seen. Serialising drops it either way.
+    const updated = {
+      ...current,
+      cachedGrowthBookFeatures: undefined,
+      cachedStatsigGates: {},
+    };
     if (updated.env) {
       updated.env = { ...updated.env };
       for (const key of ANTHROPIC_CREDENTIAL_ENV_KEYS) {

@@ -144,9 +144,9 @@ bun run dev
    ↓ 未命中
 2. growthBookOverrides 配置（~/.occ.json，仅 ant 构建）
    ↓ 未命中
-3. 内存缓存（remoteEvalFeatureValues，本次进程从服务器拉取）
+3. LOCAL_GATE_DEFAULTS（growthbook.ts 的本地固定值，压过任何远端值）
    ↓ 未命中
-4. 磁盘缓存（~/.occ.json 的 cachedGrowthBookFeatures）
+4. 内存缓存（remoteEvalFeatureValues，本次进程从服务器拉取）
    ↓ 未命中
 5. 代码中的 defaultValue 参数
 ```
@@ -155,7 +155,7 @@ bun run dev
 
 | 机制 | 说明 |
 |---|---|
-| **磁盘缓存** | `~/.occ.json` 的 `cachedGrowthBookFeatures` 字段，跨进程持久化 |
+| **磁盘缓存** | **已移除**（2.45.0）。远端 payload 只留内存，不跨进程持久化 |
 | **周期刷新** | 每 6 小时自动从服务器拉取最新值（`setInterval` + `unref`） |
 | **初始化超时** | 首次连接超时 5 秒，超时后使用磁盘缓存或默认值 |
 | **Auth 变更** | 登录/登出时自动销毁并重建客户端 |

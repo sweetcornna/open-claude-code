@@ -32,7 +32,7 @@ The complete GrowthBook implementation resides in `src/services/analytics/growth
     The SDK collects attributes for the current user, including device ID, subscription type, and organization UUID, to determine the user's experiment and variation assignments.
   </Step>
   <Step title="Cache results locally">
-    Computed results are cached in the `cachedGrowthBookFeatures` field of `~/.occ.json`. The refresh interval is 20 minutes for Anthropic employees and 6 hours for external users.
+    Computed results are held in memory only (since 2.45.0 occ no longer writes `cachedGrowthBookFeatures` to `~/.occ.json`, so they die with the process). The refresh interval is 20 minutes for Anthropic employees and 6 hours for external users. The whole path is off by default and requires `OCC_ENABLE_GROWTHBOOK=1`.
   </Step>
   <Step title="Query flags in application code">
     Application code queries feature state through flag names with the `tengu_*` prefix. The GrowthBook SDK returns the variation assigned to the current user.

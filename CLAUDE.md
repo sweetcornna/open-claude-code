@@ -85,7 +85,10 @@ occ 与官方 Claude Code 必须能装在同一台机器上互不干扰。这不
 - Daemon 的 `DAEMON_WORKER_KINDS` 目前是**空的**（唯一 worker 随 bridge 删除），supervisor 机制保留为扩展点。后台会话（`daemon bg`/`attach` 等）不受影响。
 - 已移除的 feature flag（代码全删，别再引用）：`CONTEXT_COLLAPSE`、`UDS_INBOX`、`LAN_PIPES`、`REVIEW_ARTIFACT`、`TEAMMEM`、`HISTORY_SNIP`、`OVERFLOW_TEST_TOOL` 及对应命令/工具。
 - **`FORK_SUBAGENT` 并未被移除**（文档曾写错）——只是不进默认编译列表，`FEATURE_FORK_SUBAGENT=1 bun run dev` 可启用；`/fork` 现在是 `/branch` 的 alias。
-- Analytics / GrowthBook / Sentry **是完整实现，只是默认门控为假**：Datadog 还要 `NODE_ENV=production` + provider 为 `firstParty` + `DATADOG_LOGS_ENDPOINT`/`DATADOG_API_KEY`，Sentry 要 `SENTRY_DSN`，1P 事件走 `is1PEventLoggingEnabled()`（即未 opt-out）。别当 stub 删。
+- Analytics / GrowthBook / Sentry **是完整实现，别当 stub 删**。Datadog 要 `NODE_ENV=production` + provider 为 `firstParty` + `DATADOG_LOGS_ENDPOINT`/`DATADOG_API_KEY`，Sentry 要 `SENTRY_DSN`。**一方链路（1P 事件上报 + GrowthBook）2.45.0 起改成显式 opt-in** —— 此前这里写的「默认门控为假」是错的：`is1PEventLoggingEnabled()` 只判「没 opt-out」，于是每个 occ 会话默认都在往 `api.anthropic.com` POST 事件、拉 GrowthBook 实验，并把 payload 落进 `~/.occ.json`（实测 491 条，`/logout` 不清，两次功能事故：`tengu_cobalt_raccoon` 让自动压缩整体失效、`tengu_ultraplan_config` 让 `/ultraplan` 消失）。
+  - **两个开关互相独立**，只认 env（`settings.json` 的 `env` 块即持久化形式，不另加配置键）：`OCC_ENABLE_1P_TELEMETRY=1` 开事件上报，`OCC_ENABLE_GROWTHBOOK=1` 开远端 gate 拉取。「拿指令进来」和「把数据发出去」是两件事，不要合并成一个开关。opt-out（`DISABLE_TELEMETRY` / Bedrock / Vertex / Foundry）优先级更高；自建适配器 `CLAUDE_GB_ADAPTER_URL`+`CLAUDE_GB_ADAPTER_KEY` 不变。
+  - **远端 payload 永不落盘**（上游的 `syncRemoteEvalToDisk()` 已删，只留内存）。存量污染由 `/logout` 与启动时的 `purgeCachedRemoteGates()`（`services/analytics/cachedGatePurge.ts`，无标志位、自限一次写）清掉。`LOCAL_GATE_DEFAULTS` 仍是 opt-in 用户与自建适配器的最后一道闸。
+  - **发往 `api.anthropic.com` 的一方请求用 `getFirstPartyTelemetryAuthHeaders()`，不是 `getAuthHeaders()`**。后者是推理路径共用的：DeepSeek/OpenCode 会把第三方密钥镜像进 `ANTHROPIC_API_KEY`，直接复用等于把别家密钥当 `x-api-key` 发给 Anthropic。判据是 `isThirdPartyMirroredApiKey()`（`utils/auth/auth.ts`，**不是** `isOccConfiguredAnthropicApiKey()` 的反面）。三个调用点：GrowthBook client、1P event exporter、BigQuery metrics exporter。
 
 ### Feature Flags
 

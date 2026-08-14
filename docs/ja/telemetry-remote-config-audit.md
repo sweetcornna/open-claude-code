@@ -3,6 +3,14 @@
 
 # テレメトリとリモート設定配信システムの監査（Sentry を除く）
 
+> **2.45.0 以降: `api.anthropic.com` 宛のファーストパーティ経路はデフォルトで無効であり、明示的な opt-in が必要です。**
+> `OCC_ENABLE_1P_TELEMETRY=1` で第 2 節のイベント送信を、`OCC_ENABLE_GROWTHBOOK=1` で第 3 節のリモート
+> feature flag 取得を有効化します。2 つのスイッチは互いに独立しており、環境変数からのみ読み取られます
+> （`settings.json` の `env` ブロックが永続化の形式です）。
+> 上流はこの 2 経路を「ユーザーが opt-out していないこと」に紐づけています。フォークにとってそれは、
+> サードパーティのセッションデータを Anthropic へ送り、リモートの実験 payload がローカルの挙動を長期間
+> 操作することを意味するため、occ はデフォルトを反転させました。
+
 ## 1. Datadog ログ
 
 **ファイル**: `src/services/analytics/datadog.ts`
@@ -20,7 +28,9 @@
 **ファイル**: `src/services/analytics/firstPartyEventLogger.ts` + `firstPartyEventLoggingExporter.ts`
 
 - **エンドポイント**: `https://api.anthropic.com/api/event_logging/batch`（staging に切り替え可能）
+- **スイッチ**: **デフォルト無効**。`OCC_ENABLE_1P_TELEMETRY=1` が必要（`is1PEventLoggingEnabled()`）
 - **動作**: OpenTelemetry SDK の `BatchLogRecordProcessor` を使用し、Anthropic が所有する BQ パイプラインへバッチ export する
+- **認証情報**: `getAuthHeaders()` ではなく `getFirstPartyTelemetryAuthHeaders()` を経由する。DeepSeek / OpenCode の wire はサードパーティの鍵を `ANTHROPIC_API_KEY` にミラーするため、その値は `x-api-key` として送信されない（代わりに認証なしで POST する）
 - **データ**: 完全なイベント metadata（session、model、env context、ユーザーデータ、subscription type など）
 - **耐障害性**: 失敗したイベントをローカルディスクへ永続化する（JSONL）。二乗バックオフで再試行し、最大 8 回試行する
 - **Proto schema**: イベントを `ClaudeCodeInternalEvent` / `GrowthbookExperimentEvent` protobuf 形式にシリアライズする
@@ -31,8 +41,10 @@
 **ファイル**: `src/services/analytics/growthbook.ts`
 
 - **サーバー**: `https://api.anthropic.com/`（remote eval モード）
+- **スイッチ**: **デフォルト無効**。`OCC_ENABLE_GROWTHBOOK=1` が必要。自前ホストのアダプター（`CLAUDE_GB_ADAPTER_URL` + `CLAUDE_GB_ADAPTER_KEY`）は影響を受けない
 - **動作**: 起動時にすべての feature flags を取得し、6h（外部ユーザー）/ 20min（ant）ごとに更新する
-- **ディスクキャッシュ**: feature values を `~/.occ.json` の `cachedGrowthBookFeatures` に書き込む
+- **ディスクキャッシュ**: **廃止**。リモート payload はメモリ上にのみ存在し、プロセス終了で消える。既存の `~/.occ.json` の `cachedGrowthBookFeatures` は `/logout` と起動時の `purgeCachedRemoteGates()` が削除する
+- **ローカルのフォールバック**: `LOCAL_GATE_DEFAULTS`（`growthbook.ts`）は配信値より優先される。opt-in したユーザーと自前アダプターにとって最後の砦
 - **用途**:
   - Datadog の有効・無効を制御する（`tengu_log_datadog_events`）
   - イベントの sampling rate を制御する（`tengu_event_sampling_config`）
@@ -78,7 +90,8 @@
 
 - **エンドポイント**: `https://api.anthropic.com/api/claude_code/metrics`
 - **動作**: OTel metrics を内部 BQ へ定期的に export する（間隔 5min）
-- **対象**: API 顧客、C4E/Team サブスクライバー
+- **対象**: API 顧客、C4E/Team サブスクライバー。さらに `CLAUDE_CODE_ENABLE_TELEMETRY=1` が必要
+- **認証情報**: 第 2 節と同じく `getFirstPartyTelemetryAuthHeaders()` を経由する
 - **組織単位の opt-out**: `checkMetricsEnabled()` API で照会する（下記の項目 8 を参照）
 
 ## 8. 組織単位の Metrics Opt-out 照会
@@ -120,7 +133,15 @@
 
 ---
 
-## 全体を無効にする方法
+## スイッチ一覧
+
+```bash
+# ファーストパーティ経路はデフォルト無効。有効化する手段はこの 2 つだけで、互いに独立している
+OCC_ENABLE_1P_TELEMETRY=1   # 第 2 節: api.anthropic.com へのイベント送信
+OCC_ENABLE_GROWTHBOOK=1     # 第 3 節: リモート feature flag の取得
+```
+
+opt-out は opt-in より優先されます。以下のいずれかを設定すると、上記 2 つのスイッチは効きません。
 
 ```bash
 # すべてのテレメトリを無効化（Datadog + 1P + アンケート）
@@ -155,4 +176,4 @@ CLAUDE_CODE_USE_BEDROCK=1  # または VERTEX/FOUNDRY
                     BigQuery (ClaudeCodeInternalEvent proto)
 ```
 
-GrowthBook は独立したチャネルとして、上記 2 つの sink の有効・無効と設定を同時に制御します。
+GrowthBook は独立したチャネルとして、上記 2 つの sink の有効・無効と設定を同時に制御します。デフォルト状態ではどちらの経路も起動しません。`logEventTo1P()` は `is1PEventLoggingEnabled()` のチェックで戻り、GrowthBook client はそもそも生成されません。

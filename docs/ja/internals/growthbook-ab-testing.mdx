@@ -32,7 +32,7 @@ GrowthBook の完全な実装は `src/services/analytics/growthbook.ts`（1258 �
     SDK は現在のユーザー属性（デバイス ID、サブスクリプション種別、組織 UUID など）を収集し、各実験でそのユーザーをどのグループに割り当てるかを決定します。
   </Step>
   <Step title="ローカルにキャッシュ">
-    計算結果は `~/.occ.json` の `cachedGrowthBookFeatures` フィールドにキャッシュされます。更新間隔は、Anthropic の従業員が 20 分、外部ユーザーが 6 時間です。
+    計算結果はメモリ上にのみ保持されます（2.45.0 以降、occ は `~/.occ.json` の `cachedGrowthBookFeatures` に書き込まないため、プロセス終了で消えます）。更新間隔は、Anthropic の従業員が 20 分、外部ユーザーが 6 時間です。この経路全体はデフォルト無効で、`OCC_ENABLE_GROWTHBOOK=1` が必要です。
   </Step>
   <Step title="コードから flag を照会">
     ビジネスロジックは `tengu_*` 接頭辞を持つ flag 名で機能の状態を照会し、GrowthBook SDK は現在のユーザーに割り当てられた値を返します。

@@ -16,7 +16,7 @@ import {
 } from '../../utils/config/config.js'
 import { logForDebugging } from '../../utils/telemetry/debug.js'
 import { toError } from '../../utils/runtime/errors.js'
-import { getAuthHeaders } from '../../utils/network/http.js'
+import { getFirstPartyTelemetryAuthHeaders } from '../../utils/network/http.js'
 import { logError } from '../../utils/telemetry/log.js'
 import { createSignal } from '../../utils/process/signal.js'
 import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
@@ -24,10 +24,8 @@ import {
   type GitHubActionsMetadata,
   getUserForGrowthBook,
 } from '../../utils/auth/user.js'
-import {
-  is1PEventLoggingEnabled,
-  logGrowthBookExperimentTo1P,
-} from './firstPartyEventLogger.js'
+import { isAnalyticsDisabled, isGrowthBookOptedIn } from './config.js'
+import { logGrowthBookExperimentTo1P } from './firstPartyEventLogger.js'
 
 /**
  * User attributes sent to GrowthBook for targeting.
@@ -337,8 +335,8 @@ async function processRemoteEvalPayload(
   const payload = gbClient.getPayload()
   // Empty object is truthy — without the length check, `{features: {}}`
   // (transient server bug, truncated response) would pass, clear the maps
-  // below, return true, and syncRemoteEvalToDisk would wholesale-write `{}`
-  // to disk: total flag blackout for every process sharing ~/.claude.json.
+  // below and return true, blanking every in-memory value for the rest of the
+  // process on a response that said nothing.
   if (!payload?.features || Object.keys(payload.features).length === 0) {
     return false
   }
@@ -387,8 +385,8 @@ async function processRemoteEvalPayload(
   for (const [key, feature] of Object.entries(transformedFeatures)) {
     // Under remoteEval:true the server pre-evaluates. Whether the answer
     // lands in `value` (current API) or `defaultValue` (post-TODO API shape),
-    // it's the authoritative value for this user. Guarding on both keeps
-    // syncRemoteEvalToDisk correct across a partial or full API migration.
+    // it's the authoritative value for this user. Guarding on both keeps the
+    // in-memory map correct across a partial or full API migration.
     const v = 'value' in feature ? feature.value : feature.defaultValue
     if (v !== undefined) {
       remoteEvalFeatureValues.set(key, v)
@@ -398,27 +396,28 @@ async function processRemoteEvalPayload(
 }
 
 /**
- * Write the complete remoteEvalFeatureValues map to disk. Called exactly
- * once per successful processRemoteEvalPayload — never from a failure path,
- * so init-timeout poisoning is structurally impossible (the .catch() at init
- * never reaches here).
+ * NOTE ON THE MISSING DISK WRITE
  *
- * Wholesale replace (not merge): features deleted server-side are dropped
- * from disk on the next successful payload. Ant builds ⊇ external, so
- * switching builds is safe — the write is always a complete answer for this
- * process's SDK key.
+ * Upstream has a `syncRemoteEvalToDisk()` here that wholesale-writes the
+ * evaluated payload into `cachedGrowthBookFeatures` in the global config after
+ * every successful init and refresh. occ deliberately does not.
+ *
+ * The only thing that cache buys is "remote values survive a process restart",
+ * and for a fork that is precisely the property to remove: it is what turned a
+ * single signed-in session into a permanent, invisible remote-control channel.
+ * A real ~/.occ.json carried 491 frozen first-party gates, `/logout` cleared
+ * only the in-memory map, and two of those gates were live functional
+ * regressions (`tengu_cobalt_raccoon` disabled proactive autocompact outright;
+ * `tengu_ultraplan_config` removed `/ultraplan`). Filtering the write through
+ * LOCAL_GATE_DEFAULTS would have contained those two and left every gate
+ * nobody has audited yet.
+ *
+ * With the fetch itself now opt-in (isGrowthBookEnabled above), an opted-in
+ * user still gets live remote values — in memory, for the life of the process,
+ * re-fetched on the next start. Nothing is silently inherited.
+ *
+ * Removing the pre-existing on-disk copy is cachedGatePurge.ts's job.
  */
-function syncRemoteEvalToDisk(): void {
-  const fresh = Object.fromEntries(remoteEvalFeatureValues)
-  const config = getGlobalConfig()
-  if (isEqual(config.cachedGrowthBookFeatures, fresh)) {
-    return
-  }
-  saveGlobalConfig(current => ({
-    ...current,
-    cachedGrowthBookFeatures: fresh,
-  }))
-}
 
 /**
  * Local default overrides for GrowthBook feature gates.
@@ -475,9 +474,155 @@ const LOCAL_GATE_DEFAULTS: Record<string, unknown> = {
   tengu_attribution_header: true, // API request attribution header
   tengu_slate_prism: true, // Agent progress summaries
 
+  // Reactive-only compaction ("suppress proactive autocompact, let the API's
+  // prompt-too-long trigger a compact instead"). Pinned OFF, and this one is
+  // load-bearing rather than stylistic.
+  //
+  // Enabling REACTIVE_COMPACT by default (v2.42.0) un-shook the
+  // shouldAutoCompact branch that reads this gate. Every occ install carrying
+  // a cached first-party payload — 491 gates, migrated from ~/.claude or
+  // fetched while logged in — had it resolving TRUE off the disk cache, so
+  // proactive autocompact returned false on every single turn. The arm is
+  // only survivable when the reactive half can actually see the API's
+  // rejection, which upstream can assume and a fork pointed at an arbitrary
+  // OpenAI-compatible gateway cannot. Sessions grew to 371K tokens and died
+  // on the upstream's own context-window error with no compaction at all.
+  tengu_cobalt_raccoon: false, // Reactive-only compaction (never for occ)
+
   // ── Ultrareview (cloud code review via CCR) ─────────────────────
   tengu_review_bughunter_config: { enabled: true }, // /ultrareview command visibility
   tengu_ccr_bundle_seed_enabled: true, // Bundle seed: skip GitHub App check for branch mode
+
+  // ── Remote-payload containment ───────────────────────────────────
+  //
+  // Same class of bug as tengu_cobalt_raccoon above, found by auditing every
+  // gate occ reads against a real ~/.occ.json (491 cached first-party gates).
+  // The disk cache was NOT migrated from ~/.claude — occ wrote it itself, on
+  // every successful payload, while holding Anthropic auth, and nothing ever
+  // cleared it (logout reset only the in-memory map). So an install that was
+  // logged in once kept answering every unpinned gate from a frozen Anthropic
+  // experiment payload forever.
+  //
+  // Three things now stand between a served value and occ's behaviour: the
+  // fetch is opt-in, the payload is never persisted, and these pins outrank
+  // whatever a live payload says. The pins remain load-bearing for opted-in
+  // users and for anyone pointing occ at a self-hosted GrowthBook.
+  //
+  // Each entry below restores the value occ's OWN code passes as
+  // `defaultValue` at the call site. These are all read through the
+  // _CACHED_MAY_BE_STALE family, which is the only family where
+  // LOCAL_GATE_DEFAULTS outranks the disk cache — see the audit notes on
+  // checkStatsigFeatureGate / checkSecurityRestrictionGate / _BLOCKS_ON_INIT,
+  // where pinning is inert by construction. Do not add gates here that are
+  // only read through those.
+
+  // /ultraplan visibility. commands/ultraplan.tsx:49 defaults to
+  // { enabled: true } ("默认启用"); the cached payload serves
+  // { enabled: false }, which silently removes the command.
+  tengu_ultraplan_config: { enabled: true },
+
+  // Session memory thresholds. occ pins tengu_session_memory: true above, but
+  // the cached config raises minimumMessageTokensToInit 10k → 150k, so memory
+  // never initializes in a normal session — the pin above is defeated by a
+  // sibling config. Values mirror DEFAULT_SESSION_MEMORY_CONFIG
+  // (services/SessionMemory/sessionMemoryUtils.ts:33).
+  tengu_sm_config: {
+    minimumMessageTokensToInit: 10000,
+    minimumTokensBetweenUpdate: 5000,
+    toolCallsBetweenUpdates: 3,
+  },
+
+  // 1h prompt-cache allowlist. Mirrors PROMPT_CACHE_1H_DEFAULT_ALLOWLIST
+  // (services/api/promptCacheTTL.ts:21). The cached payload drops 'compact'
+  // and 'agent:*' and adds exactly the short-lived forked sources that file's
+  // comment says must stay out ("they run 1–3 turns, so a 1h write would be
+  // paid for and never read back").
+  tengu_prompt_cache_1h_config: {
+    allowlist: ['repl_main_thread*', 'compact', 'sdk', 'agent:*'],
+  },
+
+  // Arbitrary remote-authored banner rendered above the feed
+  // (components/LogoV2/EmergencyTip.tsx). A fork must not display incident
+  // copy written for first-party Claude Code. Empty = never shown.
+  'tengu-top-of-feed-tip': { tip: '', color: '' },
+
+  // Claude Desktop upsell. Both fields default false at the call site
+  // (components/DesktopUpsell/DesktopUpsellStartup.tsx:16); the cached payload
+  // turns enable_shortcut_tip on.
+  tengu_desktop_upsell: {
+    enable_shortcut_tip: false,
+    enable_startup_dialog: false,
+  },
+
+  // 1P event exporter tuning. firstPartyEventLoggingExporter.ts:118-133
+  // honours `baseUrl`, `path`, `skipAuth` and `maxAttempts` straight from this
+  // config, so a served value can retarget occ's telemetry POSTs at an
+  // arbitrary host and drop auth. `{}` == the exporter's own constructor
+  // defaults, which is also what the call site passes.
+  //
+  // Tradeoff, deliberate: the cached payload pins `path` to
+  // `/api/event_logging/v2/batch`, so this reverts occ to the v1 path its own
+  // constant names. If upstream has retired v1 the exports 404 and events are
+  // dropped after maxAttempts — for a fork that is the better failure mode
+  // than shipping internal events to an endpoint chosen by a stale
+  // experiment payload.
+  tengu_1p_event_batch_config: {},
+
+  // Anthropic-cloud surfaces. All three default false at their call sites;
+  // the cached payload turns them on, which for occ means registering a tool
+  // that runs agents in Anthropic's cloud (RemoteTriggerTool + /schedule) and
+  // exposing /web-setup, which syncs GitHub credentials to claude.ai.
+  tengu_surreal_dali: false,
+  tengu_cobalt_lantern: false,
+
+  // Alternate system prompt for the bash-prefix permission classifier
+  // (utils/shell/prefix.ts:214, default false). Security-relevant prompt text
+  // that was never validated against the models occ actually routes to.
+  tengu_cork_m4q: false,
+
+  // Official-marketplace plugin upsell in tool stderr
+  // (utils/plugins/hintRecommendation.ts:66, default false).
+  tengu_lapis_finch: false,
+
+  // Route WebSearch through the small/fast model instead of the main loop
+  // model (WebSearchTool/adapters/apiAdapter.ts:77, default false).
+  tengu_plum_vx3: false,
+
+  // Kill switch, default true at both call sites
+  // (utils/plugins/marketplaceManager.ts:2489, :2612). Upstream plans to flip
+  // it false once their GCS mirror is authoritative; for occ that would just
+  // break official-marketplace refresh whenever the GCS fetch fails.
+  tengu_plugin_official_mkt_git_fallback: true,
+
+  // Computer-use MCP ("Chicago"). DELIBERATE DEPARTURE from the rule the rest
+  // of this block follows.
+  //
+  // Every other entry here restores the value occ's own call site passes as
+  // `defaultValue`; by that rule this one would be pinned TRUE, because
+  // utils/computerUse/gates.ts:14 defaults `enabled: true`. It is pinned false
+  // anyway. Upstream gates the feature on a Max/Pro subscription; occ's
+  // hasRequiredSubscription() is hardcoded to `return true`, so that gate is
+  // gone and the config value is the only thing left deciding whether every
+  // interactive session auto-registers an MCP server that can take
+  // screenshots and drive the mouse and keyboard.
+  //
+  // "Faithful to upstream's default" is the wrong test when the constraint
+  // that made the default safe has been removed. A capability this large is a
+  // choice the user makes, not one a fork inherits: set the config through a
+  // self-hosted GrowthBook, or flip it via CLAUDE_INTERNAL_FC_OVERRIDES.
+  tengu_malort_pedway: { enabled: false },
+
+  // Auto-memory extraction cadence: run at most once every N eligible turns
+  // (services/extractMemories/extractMemories.ts:366).
+  //
+  // Also not the call-site default, which is `?? 1`. Pinned to the cached
+  // payload's 7 on purpose. Each extraction forks the full message history for
+  // the EXTRACT_MEMORIES prompt, and per-turn forking is exactly the residency
+  // pattern documented in docs/zh/features/memory-footprint.md. Restoring 1
+  // would trade a real memory risk for fidelity to a constant nobody chose.
+  // What matters here is that the number is deterministic and ours, not that
+  // it matches upstream's source.
+  tengu_bramble_lintel: 7,
 }
 
 /**
@@ -492,15 +637,30 @@ function getLocalGateDefault(feature: string): unknown | undefined {
 }
 
 /**
- * Check if GrowthBook operations should be enabled
+ * Check if GrowthBook operations should be enabled.
+ *
+ * Off unless the user says otherwise. Upstream ties this to 1P event logging,
+ * i.e. "on unless you opted out of telemetry", which for occ meant every
+ * install fetched an Anthropic experiment payload and then let it steer the
+ * fork's own behaviour. occ instead asks for `OCC_ENABLE_GROWTHBOOK`, and asks
+ * for it SEPARATELY from `OCC_ENABLE_1P_TELEMETRY`: taking instructions in and
+ * sending usage data out are different decisions, and one switch for both
+ * means neither can be made on its own.
+ *
+ * Adapter mode is untouched — CLAUDE_GB_ADAPTER_URL + CLAUDE_GB_ADAPTER_KEY is
+ * a GrowthBook server the user stood up themselves, which is explicit intent
+ * by construction and never reaches Anthropic.
  */
 function isGrowthBookEnabled(): boolean {
   // 适配器模式：有自定义服务器配置时直接启用
   if (process.env.CLAUDE_GB_ADAPTER_URL && process.env.CLAUDE_GB_ADAPTER_KEY) {
     return true
   }
-  // GrowthBook depends on 1P event logging.
-  return is1PEventLoggingEnabled()
+  // Opt-outs outrank the opt-in, same ordering as is1PEventLoggingEnabled().
+  if (isAnalyticsDisabled()) {
+    return false
+  }
+  return isGrowthBookOptedIn()
 }
 
 /**
@@ -598,8 +758,11 @@ const getGrowthBookClient = memoize(
       checkHasTrustDialogAccepted() ||
       getSessionTrustAccepted() ||
       getIsNonInteractiveSession()
+    // getFirstPartyTelemetryAuthHeaders, not getAuthHeaders: this request goes
+    // to api.anthropic.com regardless of where the session's inference goes,
+    // so a mirrored DeepSeek/OpenCode key must not be sent as x-api-key.
     const authHeaders = hasTrust
-      ? getAuthHeaders()
+      ? getFirstPartyTelemetryAuthHeaders()
       : { headers: {}, error: 'trust not established' }
     // 适配器模式下不需要 auth，GrowthBook Cloud 用 clientKey 即可
     const hasAuth = isAdapterMode || !authHeaders.error
@@ -669,10 +832,8 @@ const getGrowthBookClient = memoize(
             logExposureForFeature(feature)
           }
           pendingExposures.clear()
-          syncRemoteEvalToDisk()
-          // Notify subscribers: remoteEvalFeatureValues is populated and
-          // disk is freshly synced. _CACHED_MAY_BE_STALE reads memory first
-          // (#22295), so subscribers see fresh values immediately.
+          // No disk write here — see the note above processRemoteEvalPayload's
+          // caller block. Values live in remoteEvalFeatureValues only.
           refreshed.emit()
         }
 
@@ -722,7 +883,7 @@ export const initializeGrowthBook = memoize(
         getSessionTrustAccepted() ||
         getIsNonInteractiveSession()
       if (hasTrust) {
-        const currentAuth = getAuthHeaders()
+        const currentAuth = getFirstPartyTelemetryAuthHeaders()
         if (!currentAuth.error) {
           if (process.env.USER_TYPE === 'ant') {
             logForDebugging(
@@ -1072,7 +1233,7 @@ export function refreshGrowthBookAfterAuthChange(): void {
     // Reinitialize with fresh auth headers and attributes
     // Track this promise so security gate checks can wait for it.
     // .catch before .finally: initializeGrowthBook can reject if its sync
-    // helpers throw (getGrowthBookClient, getAuthHeaders, resetGrowthBook —
+    // helpers throw (getGrowthBookClient, the auth-header read, resetGrowthBook —
     // clientWrapper.initialized itself has its own .catch so never rejects),
     // and .finally re-settles with the original rejection — the sync
     // try/catch below cannot catch async rejections.
@@ -1173,11 +1334,10 @@ export async function refreshGrowthBookFeatures(): Promise<void> {
     }
 
     // Gate on hadFeatures: if the payload was empty/malformed,
-    // remoteEvalFeatureValues wasn't rebuilt — skip both the no-op disk
-    // write and the spurious subscriber churn (clearCommandMemoizationCaches
-    // + getCommands + 4× model re-renders).
+    // remoteEvalFeatureValues wasn't rebuilt — skip the spurious subscriber
+    // churn (clearCommandMemoizationCaches + getCommands + 4× model
+    // re-renders). Memory only; nothing is written to disk.
     if (hadFeatures) {
-      syncRemoteEvalToDisk()
       refreshed.emit()
     }
   } catch (error) {

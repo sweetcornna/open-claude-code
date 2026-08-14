@@ -3,6 +3,12 @@
 
 # 遥测与远程配置下发系统审计（除 Sentry 外）
 
+> **2.45.0 起：发往 `api.anthropic.com` 的一方链路默认关闭，必须显式 opt-in。**
+> `OCC_ENABLE_1P_TELEMETRY=1` 打开第 2 节的事件上报，`OCC_ENABLE_GROWTHBOOK=1` 打开第 3 节的
+> 远端 feature flag 拉取。两个开关互相独立，只认环境变量（`settings.json` 的 `env` 块即持久化形式）。
+> 上游把这两条链路系在「用户没有 opt-out」上；对一个分叉而言那既会把第三方会话的使用数据发给
+> Anthropic，也会让远端实验 payload 长期操纵本地行为，所以 occ 把默认翻了过来。
+
 ## 1. Datadog 日志
 
 **文件**: `src/services/analytics/datadog.ts`
@@ -20,7 +26,9 @@
 **文件**: `src/services/analytics/firstPartyEventLogger.ts` + `firstPartyEventLoggingExporter.ts`
 
 - **端点**: `https://api.anthropic.com/api/event_logging/batch`（staging 可切换）
+- **开关**: **默认关闭**，需 `OCC_ENABLE_1P_TELEMETRY=1`（`is1PEventLoggingEnabled()`）
 - **行为**: 使用 OpenTelemetry SDK 的 `BatchLogRecordProcessor`，批量导出到 Anthropic 自有的 BQ 管道
+- **凭据**: 走 `getFirstPartyTelemetryAuthHeaders()`，不是 `getAuthHeaders()`——DeepSeek/OpenCode 会把第三方密钥镜像进 `ANTHROPIC_API_KEY`，那种值一律不作为 `x-api-key` 发出（改为不带 auth 发送）
 - **数据**: 完整事件 metadata（session、model、env context、用户数据、subscription type 等）
 - **弹性**: 本地磁盘持久化失败事件（JSONL），二次退避重试，最多 8 次尝试
 - **Proto schema**: 事件序列化为 `ClaudeCodeInternalEvent` / `GrowthbookExperimentEvent` protobuf 格式
@@ -31,8 +39,10 @@
 **文件**: `src/services/analytics/growthbook.ts`
 
 - **服务端**: `https://api.anthropic.com/`（remote eval 模式）
+- **开关**: **默认关闭**，需 `OCC_ENABLE_GROWTHBOOK=1`；自建适配器（`CLAUDE_GB_ADAPTER_URL`+`CLAUDE_GB_ADAPTER_KEY`）不受此限
 - **行为**: 启动时拉取全量 feature flags，每 6h（外部用户）/ 20min（ant）定时刷新
-- **磁盘缓存**: feature values 写入 `~/.occ.json` 的 `cachedGrowthBookFeatures`
+- **磁盘缓存**: **已移除**。远端 payload 只留在内存，进程退出即失效；存量的 `~/.occ.json` `cachedGrowthBookFeatures` 由 `/logout` 与启动时的 `purgeCachedRemoteGates()` 清除
+- **本地兜底**: `LOCAL_GATE_DEFAULTS`（`growthbook.ts`）优先于任何远端值，是 opt-in 用户与自建适配器的最后一道闸
 - **用途**:
   - 控制 Datadog 开关（`tengu_log_datadog_events`）
   - 控制事件采样率（`tengu_event_sampling_config`）
@@ -78,7 +88,8 @@
 
 - **端点**: `https://api.anthropic.com/api/claude_code/metrics`
 - **行为**: 定期（5min 间隔）导出 OTel metrics 到内部 BQ
-- **适用**: API 客户、C4E/Team 订阅者
+- **适用**: API 客户、C4E/Team 订阅者，且需 `CLAUDE_CODE_ENABLE_TELEMETRY=1`
+- **凭据**: 同第 2 节，走 `getFirstPartyTelemetryAuthHeaders()`
 - **组织级 opt-out**: 通过 `checkMetricsEnabled()` API 查询（见下方第 8 项）
 
 ## 8. 组织级 Metrics Opt-out 查询
@@ -120,7 +131,15 @@
 
 ---
 
-## 全局禁用方式
+## 开关一览
+
+```bash
+# 一方链路默认关闭，下面两个是打开它们的唯一方式（互相独立）
+OCC_ENABLE_1P_TELEMETRY=1   # 第 2 节：事件上报到 api.anthropic.com
+OCC_ENABLE_GROWTHBOOK=1     # 第 3 节：远端 feature flag 拉取
+```
+
+opt-out 优先级高于 opt-in：设了下面任意一项，上面两个开关一律无效。
 
 ```bash
 # 禁用所有遥测（Datadog + 1P + 调查问卷）
@@ -155,4 +174,5 @@ CLAUDE_CODE_USE_BEDROCK=1  # 或 VERTEX/FOUNDRY
                     BigQuery (ClaudeCodeInternalEvent proto)
 ```
 
-GrowthBook 作为独立通道，同时驱动上述两个 sink 的开关和配置。
+GrowthBook 作为独立通道，同时驱动上述两个 sink 的开关和配置。默认状态下这两条链路都不启动：
+`logEventTo1P()` 在 `is1PEventLoggingEnabled()` 处直接返回，GrowthBook client 根本不会创建。

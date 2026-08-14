@@ -144,9 +144,9 @@ Each feature value is resolved in the following order; the first match is return
    ↓ no match
 2. growthBookOverrides configuration (~/.occ.json, ant builds only)
    ↓ no match
-3. In-memory cache (remoteEvalFeatureValues, fetched from the server by this process)
+3. LOCAL_GATE_DEFAULTS (the local pins in growthbook.ts, which outrank any served value)
    ↓ no match
-4. Disk cache (cachedGrowthBookFeatures in ~/.occ.json)
+4. In-memory cache (remoteEvalFeatureValues, fetched from the server by this process)
    ↓ no match
 5. The defaultValue argument supplied in code
 ```
@@ -155,7 +155,7 @@ Each feature value is resolved in the following order; the first match is return
 
 | Mechanism | Description |
 |---|---|
-| **Disk cache** | The `cachedGrowthBookFeatures` field in `~/.occ.json`, persisted across processes |
+| **Disk cache** | **Removed** (2.45.0). The remote payload lives in memory only and is not persisted across processes |
 | **Periodic refresh** | Fetches the latest values from the server automatically every 6 hours (`setInterval` + `unref`) |
 | **Initialization timeout** | The first connection times out after 5 seconds, then uses the disk cache or default values |
 | **Authentication changes** | Login and logout automatically destroy and recreate the client |

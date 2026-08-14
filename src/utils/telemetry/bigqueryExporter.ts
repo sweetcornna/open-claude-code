@@ -14,7 +14,7 @@ import { getSubscriptionType, isClaudeAISubscriber } from '../auth/auth.js'
 import { checkHasTrustDialogAccepted } from '../config/config.js'
 import { logForDebugging } from './debug.js'
 import { errorMessage, toError } from '../runtime/errors.js'
-import { getAuthHeaders } from '../network/http.js'
+import { getFirstPartyTelemetryAuthHeaders } from '../network/http.js'
 import { logError } from './log.js'
 import { jsonStringify } from './slowOperations.js'
 import { getClaudeCodeUserAgent } from '../network/userAgent.js'
@@ -111,7 +111,11 @@ export class BigQueryMetricsExporter implements PushMetricExporter {
 
       const payload = this.transformMetricsForInternal(metrics)
 
-      const authResult = getAuthHeaders()
+      // Third first-party sink on the same footing as GrowthBook and the 1P
+      // event exporter: this POST is addressed to api.anthropic.com whatever
+      // the session's inference endpoint is, so a mirrored DeepSeek/OpenCode
+      // key must not travel with it. Erroring skips the export.
+      const authResult = getFirstPartyTelemetryAuthHeaders()
       if (authResult.error) {
         logForDebugging(`Metrics export failed: ${authResult.error}`)
         resultCallback({

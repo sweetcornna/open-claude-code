@@ -17,7 +17,7 @@ import { getPlatform, getWslVersion } from '../../utils/process/platform.js'
 import { jsonStringify } from '../../utils/telemetry/slowOperations.js'
 import { profileCheckpoint } from '../../utils/telemetry/startupProfiler.js'
 import { getCoreUserData } from '../../utils/auth/user.js'
-import { isAnalyticsDisabled } from './config.js'
+import { isAnalyticsDisabled, isFirstPartyTelemetryOptedIn } from './config.js'
 import { FirstPartyEventLoggingExporter } from './firstPartyEventLoggingExporter.js'
 import type { GrowthBookUserAttributes } from './growthbook.js'
 import { getDynamicConfig_CACHED_MAY_BE_STALE } from './growthbook.js'
@@ -129,18 +129,25 @@ export async function shutdown1PEventLogging(): Promise<void> {
 
 /**
  * Check if 1P event logging is enabled.
- * Respects the same opt-outs as other analytics sinks:
- * - Test environment
- * - Third-party cloud providers (Bedrock/Vertex)
- * - Global telemetry opt-outs
- * - Non-essential traffic disabled
+ *
+ * occ requires an explicit opt-in (`OCC_ENABLE_1P_TELEMETRY`) on top of the
+ * inherited opt-outs. Upstream returns `!isAnalyticsDisabled()` here, i.e. it
+ * exports to `api.anthropic.com/api/event_logging/batch` for everyone who has
+ * not said no — which for a fork means shipping a third party's usage data to
+ * Anthropic under an API key that may not even be Anthropic's. See
+ * services/analytics/config.ts for the full argument.
+ *
+ * The opt-outs still take precedence, so `DISABLE_TELEMETRY=1` beats the
+ * opt-in rather than the other way round.
  *
  * Note: Unlike BigQuery metrics, event logging does NOT check organization-level
  * metrics opt-out via API. It follows the same pattern as Statsig event logging.
  */
 export function is1PEventLoggingEnabled(): boolean {
-  // Respect standard analytics opt-outs
-  return !isAnalyticsDisabled()
+  if (isAnalyticsDisabled()) {
+    return false
+  }
+  return isFirstPartyTelemetryOptedIn()
 }
 
 /**

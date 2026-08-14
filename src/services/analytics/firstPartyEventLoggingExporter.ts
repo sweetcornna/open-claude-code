@@ -28,7 +28,7 @@ import {
   isFsInaccessible,
   toError,
 } from '../../utils/runtime/errors.js'
-import { getAuthHeaders } from '../../utils/network/http.js'
+import { getFirstPartyTelemetryAuthHeaders } from '../../utils/network/http.js'
 import { readJSONLFile } from '../../utils/text/json.js'
 import { logError } from '../../utils/telemetry/log.js'
 import { sleep } from '../../utils/process/sleep.js'
@@ -571,10 +571,15 @@ export class FirstPartyEventLoggingExporter implements LogRecordExporter {
       }
     }
 
-    // Try with auth headers first (unless trust not established or token is known to be expired)
+    // Try with auth headers first (unless trust not established or token is known to be expired).
+    // getFirstPartyTelemetryAuthHeaders, not getAuthHeaders: this endpoint is
+    // api.anthropic.com no matter which provider the session runs inference
+    // against, and ANTHROPIC_API_KEY may be holding a DeepSeek or OpenCode
+    // credential mirrored there by the provider wire. Erroring here just means
+    // the POST goes out unauthenticated, which this method already handles.
     const authResult = shouldSkipAuth
       ? { headers: {}, error: 'trust not established or Oauth token expired' }
-      : getAuthHeaders()
+      : getFirstPartyTelemetryAuthHeaders()
     const useAuth = !authResult.error
 
     if (!useAuth && process.env.USER_TYPE === 'ant') {

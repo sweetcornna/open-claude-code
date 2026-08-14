@@ -3,6 +3,14 @@
 
 # Telemetry and Remote Configuration Delivery Audit (Excluding Sentry)
 
+> **Since 2.45.0: the first-party paths to `api.anthropic.com` are off by default and require an explicit opt-in.**
+> `OCC_ENABLE_1P_TELEMETRY=1` turns on the event export in section 2; `OCC_ENABLE_GROWTHBOOK=1` turns on the
+> remote feature-flag fetch in section 3. The two switches are independent and are read from the environment only
+> (the `env` block of `settings.json` is the persistent form).
+> Upstream ties both paths to "the user has not opted out". For a fork that means shipping a third party's session
+> data to Anthropic and letting a remote experiment payload steer local behaviour indefinitely, so occ inverts the
+> default.
+
 ## 1. Datadog Logging
 
 **File**: `src/services/analytics/datadog.ts`
@@ -20,7 +28,9 @@
 **File**: `src/services/analytics/firstPartyEventLogger.ts` + `firstPartyEventLoggingExporter.ts`
 
 - **Endpoint**: `https://api.anthropic.com/api/event_logging/batch` (switchable to staging)
+- **Switch**: **off by default**; requires `OCC_ENABLE_1P_TELEMETRY=1` (`is1PEventLoggingEnabled()`)
 - **Behavior**: Uses the OpenTelemetry SDK's `BatchLogRecordProcessor` to export batches to Anthropic's own BQ pipeline
+- **Credential**: Goes through `getFirstPartyTelemetryAuthHeaders()`, not `getAuthHeaders()` — the DeepSeek and OpenCode wires mirror a third-party key into `ANTHROPIC_API_KEY`, and such a value is never sent as `x-api-key` (the POST goes out unauthenticated instead)
 - **Data**: Complete event metadata (session, model, environment context, user data, subscription type, and related fields)
 - **Resilience**: Persists failed events to local disk (JSONL) and retries with quadratic backoff, up to 8 attempts
 - **Proto schema**: Serializes events in the `ClaudeCodeInternalEvent` / `GrowthbookExperimentEvent` protobuf formats
@@ -31,8 +41,10 @@
 **File**: `src/services/analytics/growthbook.ts`
 
 - **Server**: `https://api.anthropic.com/` (remote eval mode)
+- **Switch**: **off by default**; requires `OCC_ENABLE_GROWTHBOOK=1`. A self-hosted adapter (`CLAUDE_GB_ADAPTER_URL` + `CLAUDE_GB_ADAPTER_KEY`) is unaffected
 - **Behavior**: Fetches all feature flags at startup, then refreshes them every 6h (external users) / 20min (ant)
-- **Disk cache**: Writes feature values to `cachedGrowthBookFeatures` in `~/.occ.json`
+- **Disk cache**: **removed**. The remote payload lives in memory only and dies with the process; an existing `cachedGrowthBookFeatures` in `~/.occ.json` is cleared by `/logout` and by `purgeCachedRemoteGates()` at startup
+- **Local fallback**: `LOCAL_GATE_DEFAULTS` (`growthbook.ts`) outranks any served value — the last gate for opted-in users and self-hosted adapters
 - **Uses**:
   - Controls the Datadog switch (`tengu_log_datadog_events`)
   - Controls event sampling rates (`tengu_event_sampling_config`)
@@ -78,7 +90,8 @@
 
 - **Endpoint**: `https://api.anthropic.com/api/claude_code/metrics`
 - **Behavior**: Periodically exports OTel metrics to the internal BQ service (5min interval)
-- **Applicability**: API customers and C4E/Team subscribers
+- **Applicability**: API customers and C4E/Team subscribers, and requires `CLAUDE_CODE_ENABLE_TELEMETRY=1`
+- **Credential**: Same as section 2 — goes through `getFirstPartyTelemetryAuthHeaders()`
 - **Organization-level opt-out**: Queried through the `checkMetricsEnabled()` API (see item 8 below)
 
 ## 8. Organization-Level Metrics Opt-out Query
@@ -120,7 +133,16 @@
 
 ---
 
-## Global Disable Controls
+## Switch Reference
+
+```bash
+# The first-party paths are off by default; these two are the only way to turn
+# them on, and they are independent of each other.
+OCC_ENABLE_1P_TELEMETRY=1   # section 2: event export to api.anthropic.com
+OCC_ENABLE_GROWTHBOOK=1     # section 3: remote feature-flag fetch
+```
+
+Opt-outs outrank opt-ins: set any of the following and the two switches above have no effect.
 
 ```bash
 # Disable all telemetry (Datadog + 1P + surveys)
@@ -155,4 +177,4 @@ User action → logEvent()
                         BigQuery (ClaudeCodeInternalEvent proto)
 ```
 
-GrowthBook operates as an independent channel and also controls the switches and configuration for both sinks above.
+GrowthBook operates as an independent channel and also controls the switches and configuration for both sinks above. In the default state neither path starts: `logEventTo1P()` returns at the `is1PEventLoggingEnabled()` check, and the GrowthBook client is never constructed.

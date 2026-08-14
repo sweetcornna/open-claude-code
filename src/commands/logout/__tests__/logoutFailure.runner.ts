@@ -268,6 +268,24 @@ describe('logout leaves the account reconfigurable', () => {
     expect(config.customApiKeyResponses?.rejected).toEqual([])
   })
 
+  test('the cached first-party feature-gate payload goes with the account', async () => {
+    secureStorageMock.setUpdateResult({ success: true })
+    saveGlobalConfig(current => ({
+      ...current,
+      cachedGrowthBookFeatures: { tengu_some_gate: true },
+      cachedStatsigGates: { tengu_some_statsig_gate: true },
+    }))
+
+    await performLogout({ clearOnboarding: true })
+
+    // clearAuthRelatedCaches() resets only the in-memory map. Leaving the disk
+    // copy meant a signed-out install kept answering gates from the previous
+    // account's Anthropic experiment assignment, across restarts, forever.
+    const config = getGlobalConfig()
+    expect(config.cachedGrowthBookFeatures).toBeUndefined()
+    expect(config.cachedStatsigGates).toEqual({})
+  })
+
   test('both entry points reset onboarding', async () => {
     secureStorageMock.setUpdateResult({ success: true })
 

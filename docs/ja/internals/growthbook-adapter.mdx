@@ -144,9 +144,9 @@ bun run dev
    ↓ 一致なし
 2. growthBookOverrides 設定（~/.occ.json、ant ビルドのみ）
    ↓ 一致なし
-3. メモリキャッシュ（remoteEvalFeatureValues、このプロセスがサーバーから取得）
+3. LOCAL_GATE_DEFAULTS（growthbook.ts のローカル固定値。配信値より優先される）
    ↓ 一致なし
-4. ディスクキャッシュ（~/.occ.json の cachedGrowthBookFeatures）
+4. メモリキャッシュ（remoteEvalFeatureValues、このプロセスがサーバーから取得）
    ↓ 一致なし
 5. コード内の defaultValue 引数
 ```
@@ -155,7 +155,7 @@ bun run dev
 
 | 仕組み | 説明 |
 |---|---|
-| **ディスクキャッシュ** | `~/.occ.json` の `cachedGrowthBookFeatures` フィールド。プロセスをまたいで永続化 |
+| **ディスクキャッシュ** | **廃止**（2.45.0）。リモート payload はメモリ上のみで、プロセスをまたいで永続化されない |
 | **定期更新** | 6 時間ごとにサーバーから最新値を自動取得（`setInterval` + `unref`） |
 | **初期化タイムアウト** | 初回接続は 5 秒でタイムアウトし、その後はディスクキャッシュまたはデフォルト値を使用 |
 | **Auth の変更** | ログイン / ログアウト時にクライアントを自動的に破棄して再作成 |
