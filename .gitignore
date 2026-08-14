@@ -53,14 +53,6 @@ credentials.json
 
 # Session-scoped progress / state files written by agents and skills
 # (autofix-pr persistence, test-progress checkpoint, recovery notes).
-# VCR recordings. shouldUseVCR() is true whenever NODE_ENV === 'test', i.e. on
-# every `bun test` run, and the writer defaults its root to getCwd() — so any
-# test that reaches a VCR-wrapped call drops fixtures/*.json in the repo root.
-# Nothing here is tracked (`git ls-files fixtures/` is empty), and leaving them
-# untracked-but-visible made `biome check` fail on unformatted JSON after a
-# plain test run. Set CLAUDE_CODE_TEST_FIXTURES_ROOT to relocate them.
-/fixtures/
-
 # Transient, never meant to enter the repo.
 .claude-impl-state.md
 .claude-progress.md
