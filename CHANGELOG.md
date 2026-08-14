@@ -4,6 +4,21 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.45.0 - 2026-08-14
+
+- **修复自动压缩自 v2.42.0 起整体失效。** 该版本将 REACTIVE_COMPACT 编入默认构建，使 `shouldAutoCompact` 中读取远端实验门的分支重新生效，而本地冻结的一方配置里该门为真，导致每轮提前返回。配套两道兜底同时失效：prompt-too-long 判定仅识别 Anthropic 措辞，认不出第三方端点的溢出提示；硬阻断预拦截被恒真的 reactive 开关短路。现改为跨 provider 的集中式溢出判定（覆盖 Anthropic、OpenAI 两条线、Gemini、Grok、DeepSeek、OpenCode、Bedrock、Vertex、Foundry），瞬时网络故障不再计入压缩熔断，熔断开闸时恢复预拦截。
+- **上下文窗口新增统一 clamp 与告警。** Anthropic 仅提供 200k 与带 beta 头的 1M 两档，此前将 `contextTokens` 配置为两者之间的值会被接受但不产生 `[1m]` 后缀，本地按配置值计算阈值而服务端仍按 200k 处理。Gemini 与 Grok 的窗口原按 200k 硬编码，实际为 1M–2M，导致在真实容量约 15% 处即开始压缩。`/model` 档位与 `/model-settings` 面板显示 `· capped to X by model`。
+- **一方遥测与远端实验配置改为显式 opt-in。** 此前默认向 api.anthropic.com 上报事件并拉取 GrowthBook 配置，且将 payload 全量写入 `~/.occ.json`（实测 491 条，`/logout` 不清理）。现由 `OCC_ENABLE_1P_TELEMETRY` 与 `OCC_ENABLE_GROWTHBOOK` 两个独立开关控制，默认关闭；远端 payload 不再落盘，存量缓存在下次启动清空。12 条会实际改变行为的门已钉为本地默认。
+- **修复第三方凭据外发。** DeepSeek 与 OpenCode 会将第三方密钥镜像进 `ANTHROPIC_API_KEY`，此前所有一方链路将其作为 `x-api-key` 发往 api.anthropic.com。影响最大的一条是 `/bug` 与会话分享：在第三方会话下会将完整对话、全部子 agent transcript 及原始 JSONL 一并上传，其中 frustration 问卷由连续两次 API 错误自动触发。推理路径不受影响。
+- **修复五条权限规则绕过。** 通配工具名在 deny/ask 中不走 glob 因而完全失效；allow 规则不检查符号链接解析后的路径；`dir/**` 未按 root 锚定；bash 规则自身不做空白归一，规则中多一个空格即整条失效；wildcard 新语法可被 `xargs` 绕过。自动放行闸门的大小写折叠同步收紧。
+- **artifact 工具改为本地优先。** 随包分发的公开 token 已被服务端拒绝，且代理将状态压平为 200 使失败不呈现为失败。默认改为写入本地并返回 `file://`，worker 与 rustypaste 经 `OCC_ARTIFACTS_BACKEND` 显式选择。Markdown 模板重写为响应式与明暗自适应，高亮器与 mermaid 自钉死版本的 CDN 加载并附 SRI，缺失时优雅降级。
+- **新增 `occ plugin eval`。** 以两个仅相差 `--plugin-dir` 的子进程构成消融对照，衡量插件的实际效果。判定以确定性断言为主且不消耗模型调用，LLM 判官为可选补充；成本、单次超时与总时长三重闸默认保守。同时新增 `occ plugin details`（分别给出常驻与调用时的 token 成本）与 `occ mcp login`/`logout`。
+- **修复 `CI=1` 或 `NODE_ENV=test` 下子命令永久挂起。** 凭据查询在该分支无凭据时抛出且未被捕获，拒绝逃出 Commander preAction 后进程空转且无任何输出，任何无 Anthropic 凭据的 CI 均无法运行子命令。
+- **对齐官方工具语义与 CLI 表面。** 子 agent 结果的信任方向、`run_in_background` 默认值与 `mode` 参数说明三处此前与官方相反；`--effort` 现接受 `xhigh`；`permission-mode: "manual"` 作为输入别名被接受（此前该值导致整份 settings 文件被跳过）。新增 `/explain-usage`、`/fewer-permission-prompts`、`/stop`、`/reload-skills` 与 `occ agents --json`。
+- **Read 超出 token 上限改为自动分页**，附截断说明并豁免重读去重；恢复中断轮次增加陈旧度闸（默认 1 小时，`0` 关闭）；`deferred_tools_delta` 携带 MCP 服务器的连接中、待授权与失败状态。
+- **API 层修正。** 订阅额度 429 不再视为可重试，限额提示由约十分钟后提前至首次拒绝时；`stop_reason` 与 `usage` 回写本轮每一条消息；不可重试错误与 watchdog 下的模型 404/403 恢复 fallback 逃生路径；可见输出中断不再合成正常完成。
+- **行为变更**：`run_in_background` 省略时由前台改为后台，需要同步结果请显式传 `false`；一方遥测与 GrowthBook 默认关闭；artifact 默认产出本地路径而非公开 URL；computer-use MCP 不再自动注册；超过 1 小时的中断轮次不再自动续跑（`CLAUDE_CODE_RESUME_INTERRUPTED_TURN_MAX_AGE_MS=0` 关闭该闸）。
+
 ## 2.44.0 - 2026-08-13
 
 - **Auto Compact 现在真正使用会话级窗口并贯通所有执行路径。** `CLAUDE_CODE_AUTO_COMPACT_WINDOW`、`--autocompact <auto|tokens>`、`/autocompact`、SDK `apply_flag_settings`、设置热更新、子 Agent 与后台 handoff 共享同一状态；显式 `auto` 会覆盖持久设置而回到模型默认。compact 触发窗口与模型真实 hard-block 上限分离，较小窗口只会更早摘要，不会提前报 `Prompt is too long`；`/context`、token usage、预警和 1M reminder 也使用相同口径。
