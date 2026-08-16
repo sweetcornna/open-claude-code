@@ -17,7 +17,15 @@ src/utils/vendor/
 # occ's own project-level directory. Blanket-ignored like .claude/ above;
 # anything meant to be team-shared (skills/, agents/, settings.json) is
 # force-added with `git add -f`, which is how .claude/ is tracked today.
-.occ/
+# Anchored with a leading slash on purpose: occ puts its git worktrees under
+# `.occ/worktrees/<name>/`, so a checkout of this repo can itself live at a
+# path containing a `.occ` segment. knip matches gitignore patterns against
+# absolute paths, so an unanchored `.occ/` also matches that ancestor segment
+# and silently drops the entry points it discovers by expanding package.json
+# `exports` globs — `bun run check:unused` then reports all ~77 files under
+# packages/builtin-tools/src/tools/ as unused. Anchoring keeps the intent
+# (ignore the repo-root .occ directory) without matching ancestors.
+/.occ/
 .omx/
 .docs/task/
 # Binary / screenshot files (root only)

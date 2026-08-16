@@ -1,0 +1,9 @@
+# Default RCS_DATABASE_PATH location
+data/
+
+# Loose SQLite files from a custom RCS_DATABASE_PATH (WAL mode adds -wal/-shm)
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# dist/ and node_modules/ are covered by the repo-root .gitignore

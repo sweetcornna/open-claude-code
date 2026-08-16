@@ -39,6 +39,17 @@
     "packages/*": {
       "project": ["src/**/*.{ts,tsx}"]
     },
+    "packages/remote-control-server": {
+      "entry": [
+        "src/index.ts",
+        "src/admin.ts",
+        "web/src/main.tsx",
+        "web/vite.config.ts",
+        "web/src/**/*.{test,spec}.{ts,tsx}"
+      ],
+      "project": ["src/**/*.ts", "web/**/*.{ts,tsx}"],
+      "ignoreDependencies": ["tailwindcss"]
+    },
     "packages/workflow-engine": {
       "project": ["src/**/*.{ts,tsx}"],
       "ignoreDependencies": ["bun-types"]
