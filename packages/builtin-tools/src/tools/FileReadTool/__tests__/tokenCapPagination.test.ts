@@ -38,6 +38,7 @@ const MAX_TOKENS = 40
 
 let tmpDir: string
 let previousSimple: string | undefined
+let previousFixturesRoot: string | undefined
 
 function makeContext(readFileState: InstanceType<typeof FileStateCache>) {
   return {
@@ -80,11 +81,16 @@ beforeAll(() => {
   // and it touches the real filesystem.
   process.env.CLAUDE_CODE_SIMPLE = '1'
   tmpDir = mkdtempSync(join(tmpdir(), 'occ-read-tokencap-'))
+  previousFixturesRoot = process.env.CLAUDE_CODE_TEST_FIXTURES_ROOT
+  process.env.CLAUDE_CODE_TEST_FIXTURES_ROOT = tmpDir
 })
 
 afterAll(() => {
   if (previousSimple === undefined) delete process.env.CLAUDE_CODE_SIMPLE
   else process.env.CLAUDE_CODE_SIMPLE = previousSimple
+  if (previousFixturesRoot === undefined)
+    delete process.env.CLAUDE_CODE_TEST_FIXTURES_ROOT
+  else process.env.CLAUDE_CODE_TEST_FIXTURES_ROOT = previousFixturesRoot
   rmSync(tmpDir, { recursive: true, force: true })
 })
 

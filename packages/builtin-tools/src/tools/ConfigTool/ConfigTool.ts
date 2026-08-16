@@ -11,6 +11,7 @@ import {
   saveGlobalConfig,
 } from 'src/utils/config/config.js'
 import { errorMessage } from '@open-claude-code/tool-runtime/errors.js'
+import { getRemoteControlAtStartup } from '@open-claude-code/tool-runtime/remoteControl.js'
 import { lazySchema } from '@open-claude-code/tool-runtime/lazySchema.js'
 import { logError } from 'src/utils/telemetry/log.js'
 import {
@@ -143,6 +144,40 @@ export const ConfigTool = buildTool({
     }
 
     // 3. SET operation
+
+    // Handle "default" — unset the config key so it falls back to the
+    // platform-aware default (determined by the bridge feature gate).
+    if (
+      setting === 'remoteControlAtStartup' &&
+      typeof value === 'string' &&
+      value.toLowerCase().trim() === 'default'
+    ) {
+      saveGlobalConfig(prev => {
+        if (prev.remoteControlAtStartup === undefined) return prev
+        const next = { ...prev }
+        delete next.remoteControlAtStartup
+        return next
+      })
+      const resolved = getRemoteControlAtStartup()
+      // Sync to AppState so useReplBridge reacts immediately
+      context.setAppState(prev => {
+        if (prev.replBridgeEnabled === resolved && !prev.replBridgeOutboundOnly)
+          return prev
+        return {
+          ...prev,
+          replBridgeEnabled: resolved,
+          replBridgeOutboundOnly: false,
+        }
+      })
+      return {
+        data: {
+          success: true,
+          operation: 'set',
+          setting,
+          value: resolved,
+        },
+      }
+    }
 
     let finalValue: unknown = value
 
@@ -325,6 +360,25 @@ export const ConfigTool = buildTool({
         context.setAppState(prev => {
           if (prev[appKey] === finalValue) return prev
           return { ...prev, [appKey]: finalValue }
+        })
+      }
+
+      // Sync remoteControlAtStartup to AppState so the bridge reacts
+      // immediately (the config key differs from the AppState field name,
+      // so the generic appStateKey mechanism can't handle this).
+      if (setting === 'remoteControlAtStartup') {
+        const resolved = getRemoteControlAtStartup()
+        context.setAppState(prev => {
+          if (
+            prev.replBridgeEnabled === resolved &&
+            !prev.replBridgeOutboundOnly
+          )
+            return prev
+          return {
+            ...prev,
+            replBridgeEnabled: resolved,
+            replBridgeOutboundOnly: false,
+          }
         })
       }
 

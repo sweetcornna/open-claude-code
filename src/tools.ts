@@ -34,6 +34,9 @@ import './services/search/sourceCredentials.js'
 // It self-registers with tool-runtime; standalone package use fails fast if a
 // bootstrap-state accessor is called without a host.
 import './bootstrap/state.js'
+// Register native Remote Control operations without importing host modules from
+// the builtin-tools leaf package.
+import './bridge/toolRuntime.js'
 import { toolMatchesName, type Tool, type Tools } from './Tool.js'
 import { AgentTool } from '@open-claude-code/builtin-tools/tools/AgentTool/AgentTool.js'
 import { BashTool } from '@open-claude-code/builtin-tools/tools/BashTool/BashTool.js'

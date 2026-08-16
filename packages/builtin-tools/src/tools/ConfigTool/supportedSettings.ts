@@ -4,6 +4,7 @@ import {
   NOTIFICATION_CHANNELS,
   TEAMMATE_MODES,
 } from 'src/utils/config/configConstants.js'
+import { getRemoteControlAtStartup } from '@open-claude-code/tool-runtime/remoteControl.js'
 import { getModelOptions } from 'src/utils/model/modelOptions.js'
 import { validateModel } from 'src/utils/model/validateModel.js'
 import { THEME_NAMES, THEME_SETTINGS } from 'src/utils/terminal/theme.js'
@@ -146,6 +147,17 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
           source: 'settings' as const,
           type: 'boolean' as const,
           description: 'Enable voice dictation (hold-to-talk)',
+        },
+      }
+    : {}),
+  ...(feature('BRIDGE_MODE')
+    ? {
+        remoteControlAtStartup: {
+          source: 'global' as const,
+          type: 'boolean' as const,
+          description:
+            'Enable Remote Control for all sessions (true | false | default)',
+          formatOnRead: () => getRemoteControlAtStartup(),
         },
       }
     : {}),
