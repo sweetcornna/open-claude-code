@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import type {
   BetaMessage,
   BetaRawMessageStreamEvent,
@@ -244,6 +244,114 @@ describe('retryThirdPartyEventStream', () => {
     expect((error as Error | undefined)?.message).toContain(
       'stream idle timeout',
     )
+  })
+})
+
+describe('retryThirdPartyEventStream retry budget', () => {
+  // resolveOpenAIMaxRetries reads this, and a developer shell that sets it
+  // would otherwise decide the attempt counts asserted below.
+  const RETRIES_KEY = 'CLAUDE_CODE_MAX_RETRIES'
+  let savedMaxRetries: string | undefined
+
+  beforeEach(() => {
+    savedMaxRetries = process.env[RETRIES_KEY]
+    delete process.env[RETRIES_KEY]
+  })
+  afterEach(() => {
+    if (savedMaxRetries === undefined) delete process.env[RETRIES_KEY]
+    else process.env[RETRIES_KEY] = savedMaxRetries
+  })
+
+  function unavailable(overrides?: {
+    retryAfterMs?: number
+    headers?: Headers
+  }): OpenAIRequestError {
+    return new OpenAIRequestError('gateway request failed (503)', {
+      retryable: true,
+      status: 503,
+      ...overrides,
+    })
+  }
+
+  async function runLadder(params: {
+    querySource?: 'compact' | 'repl_main_thread'
+    error?: () => unknown
+  }): Promise<{ attempts: number; delays: number[]; error: unknown }> {
+    let attempts = 0
+    const delays: number[] = []
+    const { error } = await collectUntilThrow(
+      retryThirdPartyEventStream({
+        signal: new AbortController().signal,
+        ...(params.querySource ? { querySource: params.querySource } : {}),
+        delay: async delayMs => {
+          delays.push(delayMs)
+        },
+        create: async () => {
+          attempts++
+          throw (params.error ?? unavailable)()
+        },
+      }),
+    )
+    return { attempts, delays, error }
+  }
+
+  test('caps a compact at three attempts', async () => {
+    // Mirrors withRetry.ts on the Anthropic lane. An auto-compact is invisible
+    // to the user, so the default ladder turns one bad gateway into ~44
+    // requests (11 attempts x up to four prompt-too-long rounds) of silence.
+    const { attempts } = await runLadder({ querySource: 'compact' })
+    expect(attempts).toBe(3)
+  })
+
+  test('leaves every other query source on the full ladder', async () => {
+    const { attempts } = await runLadder({ querySource: 'repl_main_thread' })
+    expect(attempts).toBe(11)
+  })
+
+  test('an unlabelled call keeps the default budget', async () => {
+    const { attempts } = await runLadder({})
+    expect(attempts).toBe(11)
+  })
+
+  test('honours a Retry-After that outlasts the backoff', async () => {
+    // The first backoff step is ~500ms. Re-asking a limiter that stated five
+    // seconds burns an attempt on a limit that had not cleared.
+    const { delays } = await runLadder({
+      querySource: 'compact',
+      error: () => unavailable({ retryAfterMs: 5_000 }),
+    })
+    expect(delays).toEqual([5_000, 5_000])
+  })
+
+  test('reads Retry-After off the response headers too', async () => {
+    const { delays } = await runLadder({
+      querySource: 'compact',
+      error: () =>
+        unavailable({ headers: new Headers({ 'retry-after': '5' }) }),
+    })
+    expect(delays).toEqual([5_000, 5_000])
+  })
+
+  test('never sleeps below its own backoff', async () => {
+    const { delays } = await runLadder({
+      querySource: 'compact',
+      error: () => unavailable({ retryAfterMs: 1 }),
+    })
+    // Exponential backoff with jitter; the point is that a token gesture from
+    // the server cannot shorten the ladder's own spacing.
+    expect(delays).toHaveLength(2)
+    expect(delays[0]).toBeGreaterThanOrEqual(500)
+  })
+
+  test('refuses instead of sleeping past the cap', async () => {
+    // Same rule as retryAPIRequest and withRetry: a server asking for more than
+    // a minute is declining, and pretending otherwise just hides the turn.
+    const { attempts, delays, error } = await runLadder({
+      error: () => unavailable({ retryAfterMs: 61_000 }),
+    })
+    expect(attempts).toBe(1)
+    expect(delays).toEqual([])
+    expect((error as Error | undefined)?.message).toContain('(503)')
   })
 })
 

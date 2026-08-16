@@ -169,6 +169,7 @@ export async function* queryModelGemini(
 
     const adaptedStream = retryThirdPartyEventStream({
       signal,
+      querySource: options.querySource,
       create: async () =>
         adaptGeminiStreamToAnthropic(
           streamGeminiGenerateContent(request),

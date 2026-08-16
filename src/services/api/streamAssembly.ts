@@ -20,7 +20,13 @@ import {
   isRetryableAPIError,
   NonRetryableError,
 } from './retryClassification.js'
-import { getOpenAIRetryDelay, resolveOpenAIMaxRetries } from './openai/retry.js'
+import {
+  getOpenAIRetryDelay,
+  MAX_RETRY_AFTER_MS,
+  resolveOpenAIMaxRetries,
+  retryAfterMsFromAPIError,
+} from './openai/retry.js'
+import type { QuerySource } from '../../constants/querySource.js'
 
 /**
  * Usage shape shared by every third-party adapter. Mirrors Anthropic's
@@ -141,10 +147,22 @@ export async function* retryThirdPartyEventStream(params: {
   create: () => Promise<AsyncIterable<BetaRawMessageStreamEvent>>
   signal: AbortSignal
   maxRetries?: number
+  /**
+   * What this turn is for. Only `compact` changes anything: see the cap below.
+   */
+  querySource?: QuerySource
   delay?: (delayMs: number, signal: AbortSignal) => Promise<void>
   onRetry?: (error: unknown) => void | Promise<void>
 }): AsyncGenerator<BetaRawMessageStreamEvent, void> {
-  const maxRetries = params.maxRetries ?? resolveOpenAIMaxRetries()
+  const configuredMaxRetries = params.maxRetries ?? resolveOpenAIMaxRetries()
+  // Mirrors withRetry.ts on the Anthropic lane: an auto-compact is a request
+  // the user never made and cannot watch, so 11 attempts (times up to four
+  // prompt-too-long rounds) is 44 requests of invisible waiting. Three attempts
+  // still absorbs a transient blip; past that, failing is the kinder answer.
+  const maxRetries =
+    params.querySource === 'compact'
+      ? Math.min(configuredMaxRetries, 2)
+      : configuredMaxRetries
   const delay =
     params.delay ??
     ((delayMs: number, signal: AbortSignal) =>
@@ -223,6 +241,24 @@ export async function* retryThirdPartyEventStream(params: {
           ? ++thinkingRetries <= 2
           : ++noOutputRetries <= maxRetries
       if (!retry) throw error
+      // Settle the wait before committing to the attempt. A `Retry-After` this
+      // ladder ignored was the difference between "wait 500ms" and what the
+      // limiter actually asked for, so every early step landed on a limit that
+      // had not cleared yet and burned the budget. Same rule as
+      // retryAPIRequest: honour the header, never go below the backoff, and
+      // treat a demand beyond the cap as a refusal rather than a longer sleep.
+      const backoffMs =
+        commitment === 'none'
+          ? getOpenAIRetryDelay(noOutputRetries)
+          : 100 * thinkingRetries
+      const retryAfterMs = retryAfterMsFromAPIError(error)
+      if (retryAfterMs !== undefined && retryAfterMs > MAX_RETRY_AFTER_MS) {
+        throw error
+      }
+      const delayMs =
+        retryAfterMs === undefined
+          ? backoffMs
+          : Math.max(retryAfterMs, backoffMs)
       await params.onRetry?.(error)
       for (const event of finalizeInterruptedAttempt(
         commitment,
@@ -232,11 +268,7 @@ export async function* retryThirdPartyEventStream(params: {
       )) {
         yield event
       }
-      if (commitment === 'none') {
-        await delay(getOpenAIRetryDelay(noOutputRetries), params.signal)
-      } else {
-        await delay(100 * thinkingRetries, params.signal)
-      }
+      await delay(delayMs, params.signal)
     }
   }
 }

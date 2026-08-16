@@ -2891,6 +2891,11 @@ async function* queryModel(
             thinkingConfig,
             ...(isFastModeEnabled() && { fastMode: isFastMode }),
             signal,
+            // Without this the compact cap in withRetry never applies here, so
+            // a compact that fell back on a 404 kept the full retry budget —
+            // the one path where the sibling fallback site above is bounded and
+            // this one was not.
+            querySource: options.querySource,
           },
           paramsFromContext,
           (attempt, _startTime, tokens) => {
