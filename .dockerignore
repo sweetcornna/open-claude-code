@@ -5,7 +5,8 @@ dist
 .github
 docs
 *.md
-packages/remote-control-server/data/*.db
-packages/remote-control-server/data/*.db-wal
-packages/remote-control-server/data/*.db-shm
+# The database is rcs.sqlite (plus -wal/-shm sidecars), not *.db — the old
+# patterns matched nothing and baked a local dev database into the image.
+# Ignore the whole data directory: it is a runtime volume mount, never build input.
+packages/remote-control-server/data/
 .claude

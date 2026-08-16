@@ -285,7 +285,11 @@ export async function* withRetry<T>(
   ) => Promise<T>,
   options: RetryOptions,
 ): AsyncGenerator<SystemAPIErrorMessage, T> {
-  const maxRetries = getMaxRetries(options)
+  const configuredMaxRetries = getMaxRetries(options)
+  const maxRetries =
+    options.querySource === 'compact'
+      ? Math.min(configuredMaxRetries, 2)
+      : configuredMaxRetries
   const retryContext: RetryContext = {
     model: options.model,
     thinkingConfig: options.thinkingConfig,
@@ -498,7 +502,9 @@ export async function* withRetry<T>(
 
       // Only retry if the error indicates we should
       const persistent =
-        isPersistentRetryEnabled() && isTransientCapacityError(error)
+        options.querySource !== 'compact' &&
+        isPersistentRetryEnabled() &&
+        isTransientCapacityError(error)
 
       // One verdict for every shape that reaches this catch — SDK errors, bare
       // transport failures and provider-synthesised errors alike.

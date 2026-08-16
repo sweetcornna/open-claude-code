@@ -43,6 +43,10 @@ import { resolveAppliedEffort } from '../../../utils/model/effort.js'
 import { resolveGrokReasoningEffort } from './reasoning.js'
 import { OpenAIRequestError } from '../openai/retry.js'
 import {
+  resolveStreamIdleTimeoutMs,
+  withIdleTimeout,
+} from '../openai/streamIdleTimeout.js'
+import {
   assembleFinalAssistantOutputs,
   retryThirdPartyEventStream,
 } from '../streamAssembly.js'
@@ -145,16 +149,37 @@ export async function* queryModelGrok(
       ...(grokReasoningEffort && { reasoning_effort: grokReasoningEffort }),
     } as ChatCompletionCreateParamsStreaming
 
+    const idleTimeoutMs = resolveStreamIdleTimeoutMs()
     const adaptedStream = retryThirdPartyEventStream({
       signal,
+      querySource: options.querySource,
       onRetry: () => clearGrokClientCache(),
-      create: async () =>
-        adaptOpenAIStreamToAnthropic(
-          (await getClient().chat.completions.create(request, {
-            signal,
-          })) as AsyncIterable<ChatCompletionChunk>,
-          grokModel,
-        ),
+      create: async () => {
+        // Per-attempt controller forwarding the caller's signal: the idle
+        // watchdog must be able to drop this request's socket without
+        // cancelling the turn. Same shape as the OpenAI chat lane.
+        const controller = new AbortController()
+        const forwardAbort = () => controller.abort(signal.reason)
+        if (signal.aborted) forwardAbort()
+        else signal.addEventListener('abort', forwardAbort, { once: true })
+        try {
+          const stream = (await getClient().chat.completions.create(request, {
+            signal: controller.signal,
+          })) as AsyncIterable<ChatCompletionChunk>
+          return adaptOpenAIStreamToAnthropic(
+            withIdleTimeout(stream, {
+              timeoutMs: idleTimeoutMs,
+              label: 'Grok',
+              onTimeout: error => controller.abort(error),
+              onClose: () => signal.removeEventListener('abort', forwardAbort),
+            }),
+            grokModel,
+          )
+        } catch (error) {
+          signal.removeEventListener('abort', forwardAbort)
+          throw error
+        }
+      },
     })
 
     const contentBlocks: Record<number, Record<string, unknown>> = {}

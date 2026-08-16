@@ -11,7 +11,7 @@
 
 DAEMON は occ をバックグラウンドデーモンに切り替えます。メインプロセス（supervisor）が複数の worker サブプロセスのライフサイクルを管理し、ファイルシステム上の状態ファイルを介して通信します。
 
-> **現在、supervisor worker は 1 つも登録されていません。** 唯一の worker だった `remoteControl` は、自前の bridge を headless で駆動するものでしたが、bridge とともに 2026-07 に削除されました（現在のリモートコントロールは Happy に委譲されています。[Remote Control](./remote-control-self-hosting.md) を参照）。現在、`DAEMON_WORKER_KINDS` は空の配列であり、`occ daemon start` はその旨を明示してそのまま戻ります。spawn / バックオフ / parking / 状態ファイルの機構は、次の常駐 worker のための拡張点として完全な形で残されています。バックグラウンドセッションのサブコマンド（`daemon bg` / `attach` / `logs` / `kill`、`BG_SESSIONS` でゲート）は影響を受けず、通常どおり利用できます。
+> **`remoteControl` supervisor worker が登録されています。** `runBridgeHeadless()` で公式 endpoint またはセルフホスト RCS に接続してリモート session を受け付けます。supervisor はクラッシュ再起動、指数バックオフ、永久エラーの parking を担当します。バックグラウンドセッションのサブコマンド（`daemon bg` / `attach` / `logs` / `kill`、`BG_SESSIONS` でゲート）はこの worker から独立しています。
 
 ## 2. 実装アーキテクチャ
 
@@ -20,7 +20,7 @@ DAEMON は occ をバックグラウンドデーモンに切り替えます。�
 | モジュール | ファイル | 状態 |
 |------|------|------|
 | デーモンのメインプロセス | `src/daemon/main.ts` | **実装済み** — Supervisor はサブコマンド、Worker のライフサイクル管理、指数バックオフによる再起動を含む |
-| Worker の登録 | `src/daemon/workerRegistry.ts` | **実装済み** — `DAEMON_WORKER_KINDS` は現在空 |
+| Worker の登録 | `src/daemon/workerRegistry.ts` | **実装済み** — `remoteControl` を登録し `runBridgeHeadless()` を実行 |
 | Daemon の状態 | `src/daemon/state.ts` | **実装済み** — PID/状態ファイルの読み書きと照会 |
 | CLI ルーティング | `src/entrypoints/cli.tsx` | **配線済み** — `--daemon-worker` と `daemon` サブコマンド |
 | コマンド登録 | `src/commands.ts` | **配線済み** — DAEMON ゲート |

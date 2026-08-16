@@ -66,7 +66,8 @@
     "docs:dev": "npx mintlify dev",
     "typecheck": "tsc --noEmit",
     "release": "bun run scripts/release.ts",
-    "precheck": "bun run typecheck && bun run check:fix && bun run check:prompt-purity && bun run check:mock-hygiene && bun test"
+    "precheck": "bun run typecheck && bun run check:fix && bun run check:prompt-purity && bun run check:mock-hygiene && bun test",
+    "rcs": "bun run --cwd packages/remote-control-server dev"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.19.0",

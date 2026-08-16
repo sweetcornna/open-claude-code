@@ -8,7 +8,13 @@ const DEFAULT_MAX_RETRIES = 10
 const MAX_CONFIGURED_RETRIES = 15
 const BASE_DELAY_MS = 500
 const MAX_BACKOFF_MS = 32_000
-const MAX_RETRY_AFTER_MS = 60_000
+/**
+ * Longest server-requested wait any ladder will actually sit through. Beyond
+ * it the request is refused instead — mirrors `RETRY_AFTER_MAX_MS` on the
+ * Anthropic lane (withRetry.ts), which throws `CannotRetryError` at the same
+ * threshold.
+ */
+export const MAX_RETRY_AFTER_MS = 60_000
 type OpenAIRetryDelay = (delayMs: number, signal: AbortSignal) => Promise<void>
 
 export type APIRetryOptions = {
@@ -199,7 +205,14 @@ export async function createOpenAIResponseError(
   )
 }
 
-function retryAfterMsFromError(error: unknown): number | undefined {
+/**
+ * The wait the server asked for, if it asked for one.
+ *
+ * Exported because two ladders need it: this file's {@link retryAPIRequest} and
+ * `streamAssembly.ts`'s `retryThirdPartyEventStream`, which used to back off
+ * blind.
+ */
+export function retryAfterMsFromAPIError(error: unknown): number | undefined {
   // An OpenAIRequestError may carry the parsed value, the raw headers, or both:
   // `createOpenAIResponseError` only pre-parses `retry-after`, so a response
   // that used `retry-after-ms` alone still has to be read off the headers.
@@ -273,7 +286,7 @@ export async function retryAPIRequest<T>(
       ) {
         throw error
       }
-      const retryAfterMs = retryAfterMsFromError(error)
+      const retryAfterMs = retryAfterMsFromAPIError(error)
       const backoffMs = getOpenAIRetryDelay(attempt + 1, random)
       if (retryAfterMs !== undefined && retryAfterMs > MAX_RETRY_AFTER_MS) {
         throw error

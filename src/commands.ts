@@ -76,6 +76,12 @@ const briefCommand =
 const assistantCommand = feature('KAIROS')
   ? require('./commands/assistant/index.js').default
   : null
+const bridge = feature('BRIDGE_MODE')
+  ? require('./commands/bridge/index.js').default
+  : null
+const remoteControlServerCommand = feature('BRIDGE_MODE')
+  ? require('./commands/remoteControlServer/index.js').default
+  : null
 const voiceCommand = feature('VOICE_MODE')
   ? require('./commands/voice/index.js').default
   : null
@@ -150,6 +156,7 @@ import reloadPlugins from './commands/reload-plugins/index.js'
 import reloadSkills from './commands/reload-skills/index.js'
 import rewind from './commands/rewind/index.js'
 import heapDump from './commands/heapdump/index.js'
+import bridgeKick from './commands/bridge-kick.js'
 import version from './commands/version.js'
 import summary from './commands/summary/index.js'
 import recap from './commands/recap/index.js'
@@ -325,6 +332,8 @@ const COMMANDS = memoize((): Command[] => [
   ...(coordinatorCmd ? [coordinatorCmd] : []),
   ...(briefCommand ? [briefCommand] : []),
   ...(assistantCommand ? [assistantCommand] : []),
+  ...(bridge ? [bridge] : []),
+  ...(remoteControlServerCommand ? [remoteControlServerCommand] : []),
   ...(voiceCommand ? [voiceCommand] : []),
   thinkback,
   thinkbackPlay,
@@ -351,6 +360,7 @@ const COMMANDS = memoize((): Command[] => [
   autofixPr,
   commit,
   commitPushPr,
+  bridgeKick,
   version,
   ...(subscribePr ? [subscribePr] : []),
   initVerifiers,

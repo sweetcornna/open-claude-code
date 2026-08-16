@@ -1,25 +1,28 @@
+import { getBridgeBaseUrlOverride } from '../../bridge/bridgeBaseUrl.js'
 import {
-  HAPPY_BIN,
-  HAPPY_NPM_PACKAGE,
-} from '../../cli/remoteControlLauncher.js'
-import { whichSync } from '../process/which.js'
+  getBridgeAccessToken,
+  getBridgeBaseUrl,
+  isSelfHostedBridge,
+} from '../../bridge/bridgeConfig.js'
 
 /**
- * Local view of remote-control readiness.
- *
- * Remote control is Happy driving `occ --acp`, so "is it available here" is
- * two facts: whether the `happy` binary is on PATH, and whether the user has
- * pointed it at a self-hosted server.
+ * Three endpoints are worth telling apart here, not two: an unconfigured occ
+ * now reaches the project's public server, and reporting that as "self-hosted"
+ * would send people looking for a deployment they never made.
  */
+function describeEndpoint(): string {
+  if (!isSelfHostedBridge()) return 'official (claude.ai)'
+  return getBridgeBaseUrlOverride() ? 'self-hosted' : 'default (public server)'
+}
+
 export function formatRemoteControlLocalStatus(): string {
   try {
-    const happyPath = whichSync(HAPPY_BIN)
-    const server = process.env.HAPPY_SERVER_URL
+    const token = getBridgeAccessToken()
     return [
-      `Remote Control: ${happyPath ? 'ready' : 'unavailable'} (via Happy over ACP)`,
-      `  happy=${happyPath ?? `not found — npm install -g ${HAPPY_NPM_PACKAGE}`}`,
-      `  server=${server ? `${server} (self-hosted)` : 'default (Happy hosted relay)'}`,
-      '  agent=occ --acp',
+      `Remote Control: ${describeEndpoint()}`,
+      `  base_url=${getBridgeBaseUrl()}`,
+      `  token=${token ? 'present' : 'missing'}`,
+      '  entitlement=checked at remote-control startup',
     ].join('\n')
   } catch (error) {
     return [

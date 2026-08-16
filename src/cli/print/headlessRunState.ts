@@ -60,6 +60,7 @@ import type { CanUseToolFn } from 'src/hooks/useCanUseTool.js'
 import type { AppState } from 'src/state/AppStateStore.js'
 import type { Tools } from 'src/Tool.js'
 import type { Message } from 'src/types/message.js'
+import type { ReplBridgeHandle } from 'src/bridge/replBridge.js'
 import type { QueuedCommand } from 'src/types/textInputTypes.js'
 import type { ThinkingConfig } from 'src/utils/model/thinking.js'
 import type { Stream } from 'src/utils/collections/stream.js'
@@ -194,6 +195,8 @@ export type HeadlessRunState = {
   // ---- conversation / turn state -----------------------------------------
   /** Directly mutated by `ask()`. Same array identity as `initialMessages`. */
   readonly mutableMessages: Message[]
+  bridgeHandle: ReplBridgeHandle | null
+  bridgeLastForwardedIndex: number
   /** Replaced wholesale by `ask()`'s clone-then-replace cycle. */
   readFileState: FileStateCache
   /** Client-supplied `seed_read_state` entries awaiting the next cycle. */
@@ -325,6 +328,8 @@ export function createHeadlessRunState(
     // messages include Assistant, User, Attachment, and Progress messages.
     // TODO: Clean up this code to avoid passing around a mutable array.
     mutableMessages: input.initialMessages,
+    bridgeHandle: null,
+    bridgeLastForwardedIndex: 0,
     // Seed the readFileState cache from the transcript (content the model saw,
     // with message timestamps) so getChangedFiles can detect external edits.
     // This cache instance must persist across ask() calls, since the edit tool

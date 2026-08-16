@@ -83,23 +83,16 @@ The current model is:
 
 ### 3.3 Remote access
 
-> **Changed (2026-07)**: KAIROS previously used an in-house Bridge Mode (`src/bridge/`) to long-poll the claude.ai server. `src/bridge/` and `BRIDGE_MODE` have been deleted.
-
-Remote access now uses ACP: occ acts as an ACP agent (`occ --acp`), [Happy](https://github.com/slopus/happy) provides the client, and `occ remote-control` connects the two.
+KAIROS uses occ's native Remote Control bridge. `useReplBridge` synchronizes the current REPL with the official endpoint or a self-hosted RCS; it does not start a separate ACP session.
 
 ```
-Happy Mobile App / Web
+Browser / Remote Control client
       │
-      ▼ (E2E encryption, self-hostable server)
+      ▼ WebSocket / SSE + HTTP
 ┌──────────────────────┐
-│  Happy Server        │
+│ Remote Control Server│  Official endpoint or self-hosted RCS
 └──────────┬───────────┘
-           │ ACP over stdio
-           ▼
-┌──────────────────────┐
-│  occ ACP Agent       │  src/services/acp/
-└──────────┬───────────┘
-           │
+           │ Native bridge protocol
            ▼
 ┌──────────────────────┐
 │  REPL + Proactive    │  Tick-driven autonomous work
@@ -140,7 +133,7 @@ FEATURE_KAIROS=1 FEATURE_TOKEN_BUDGET=1 bun run dev
 
 - **Anthropic OAuth**: Requires a claude.ai subscription login, not an API key
 - **GrowthBook**: Server-side feature gating
-- **Remote access** (optional): Happy CLI (`npm install -g happy-coder`)
+- **Remote access** (optional): the native bridge; run `packages/remote-control-server/` when self-hosting
 
 ## 7. File index
 

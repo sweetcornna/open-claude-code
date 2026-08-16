@@ -108,6 +108,28 @@ REPL で `/login` を実行し、**Anthropic Compatible** を選ぶと、Anthrop
 
 **Tab / Shift+Tab** でフィールドを移動、**Enter** で確定し、最後のフィールドで Enter を押すと保存されます。
 
+## リモートコントロール
+
+すでに動いているセッションをスマートフォンや別のブラウザから操作できます。同じ会話、ツール出力のライブ表示、権限承認、中断がそのまま届きます。
+
+```sh
+occ
+```
+
+```text
+/remote-control     # 初回は登録またはログインが表示されます
+```
+
+出力された URL を開くか、スマートフォンで QR コードを読み取ってください。
+
+設定は不要です。occ は本プロジェクトが運用する公開サーバー `rc.cornna.xyz` に接続します。ただし通信は**そのサーバーを経由し、サーバー側に保存されます**。エンドツーエンド暗号化ではなく、セッションごとに直近約 5,000 件のイベントが保持されます。自分の管理下だけで完結させたい場合は、接続先を自分のサーバーに向けてください。
+
+```sh
+export OCC_REMOTE_CONTROL_URL="https://rcs.example.com"
+```
+
+サーバー本体は本リポジトリに含まれています（`packages/remote-control-server/`）。構築手順は[セルフホストのドキュメント](./docs/ja/features/remote-control-self-hosting.md)を参照してください。旧来の `CLAUDE_BRIDGE_BASE_URL` も引き続き利用できます。
+
 ## 主な機能
 
 | 機能 | 説明 | ドキュメント |
@@ -116,7 +138,7 @@ REPL で `/login` を実行し、**Anthropic Compatible** を選ぶと、Anthrop
 | **Ultracode マルチエージェント編成** | `/ultracode` と `Workflow` ツールで決定論的な JS スクリプト（`agent`/`pipeline`/`parallel`/`phase`）を実行。`/workflows` でライブパネルを表示し、ジャーナル再生と同時実行数の上限に対応 | [ドキュメント](./docs/zh/features/workflow-scripts.md) |
 | **Artifacts** | モデルが HTML／ダッシュボード／レポートを単独ページとして生成。既定はローカル出力（`file://`）で、公開 URL への発行は明示的に設定した場合のみ（7 日／30 日で失効、Cloudflare Worker + R2 でセルフホスト可能） | [ドキュメント](./packages/cloud-artifacts/README.md) |
 | **ACP プロトコル** | Zed、Cursor などの IDE と接続。セッション再開、Skills、権限のブリッジに対応 | [ドキュメント](./docs/zh/features/acp-zed.md) |
-| **Remote Control** | `occ remote-control` は occ 自身の ACP エージェント経由でセッションを [Happy](https://github.com/slopus/happy)（スマートフォン／Web／エンドツーエンド暗号化）に引き渡します。サーバーはセルフホスト可能 | [ドキュメント](./docs/zh/features/remote-control-self-hosting.md) |
+| **Remote Control** | `/remote-control` と `occ --remote-control` はネイティブ bridge を通じて現在の REPL 会話をスマートフォン／Web と同期します。`occ remote-control` は常駐リモート環境を提供し、サーバーと Web UI はセルフホスト可能です | [ドキュメント](./docs/ja/features/remote-control-self-hosting.md) |
 | **Langfuse モニタリング** | エージェントループの詳細をすべて確認でき、ワンクリックでデータセット化 | [ドキュメント](./docs/zh/features/langfuse-monitoring.md) |
 | **Web 検索** | Bing / Brave による組み込み検索 | [ドキュメント](./docs/zh/features/web-browser-tool.md) |
 | **Poor モード** | メモリ抽出と入力サジェストを無効化し、同時リクエストを削減 | `/poor` |

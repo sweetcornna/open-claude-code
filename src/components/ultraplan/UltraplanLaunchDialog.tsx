@@ -2,6 +2,7 @@ import * as React from 'react';
 import { Box, Text, Link } from '@anthropic/ink';
 import { Select } from '../CustomSelect/select.js';
 import { Dialog } from '../design-system/Dialog.js';
+import { useAppState, useSetAppState } from '../../state/AppState.js';
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config/config.js';
 import { CCR_TERMS_URL } from '../../commands/ultraplan.js';
 import { getPromptIdentifier, getDialogConfig, type PromptIdentifier } from 'src/utils/ultraplan/prompt.js';
@@ -16,6 +17,7 @@ interface UltraplanLaunchDialogProps {
   onChoice: (
     choice: ChoiceValue,
     opts: {
+      disconnectedBridge: boolean;
       promptIdentifier: PromptIdentifier;
     },
   ) => void;
@@ -40,6 +42,8 @@ export function UltraplanLaunchDialog({ onChoice }: UltraplanLaunchDialogProps):
   const dialogConfig = React.useMemo(() => {
     return getDialogConfig(promptIdentifier);
   }, [promptIdentifier]);
+  const isBridgeEnabled = useAppState(state => state.replBridgeEnabled);
+  const setAppState = useSetAppState();
 
   // ------------------------------------------------------------------
   // Choice handler
@@ -47,25 +51,42 @@ export function UltraplanLaunchDialog({ onChoice }: UltraplanLaunchDialogProps):
 
   const handleChoice = React.useCallback(
     (value: ChoiceValue) => {
+      const disconnectedBridge = value === 'run' && isBridgeEnabled;
+      if (disconnectedBridge) {
+        setAppState(prev =>
+          prev.replBridgeEnabled
+            ? {
+                ...prev,
+                replBridgeEnabled: false,
+                replBridgeExplicit: false,
+                replBridgeOutboundOnly: false,
+              }
+            : prev,
+        );
+      }
       // Persist that the user has now seen the ultraplan terms
       if (value !== 'cancel' && showTermsLink) {
         saveGlobalConfig(prev => (prev.hasSeenUltraplanTerms ? prev : { ...prev, hasSeenUltraplanTerms: true }));
       }
 
-      onChoice(value, { promptIdentifier });
+      onChoice(value, { disconnectedBridge, promptIdentifier });
     },
-    [onChoice, showTermsLink],
+    [onChoice, isBridgeEnabled, setAppState, showTermsLink],
   );
 
   const handleCancel = React.useCallback(() => {
     handleChoice('cancel');
   }, [handleChoice]);
 
+  const runDescription = isBridgeEnabled
+    ? 'disable Remote Control and launch in Claude Code on the web'
+    : 'launch in Claude Code on the web';
+
   const options = [
     {
       label: 'Run ultraplan',
       value: 'run' as const,
-      description: 'launch in Claude Code on the web',
+      description: runDescription,
     },
     { label: 'Not now', value: 'cancel' as const },
   ];
@@ -83,7 +104,9 @@ export function UltraplanLaunchDialog({ onChoice }: UltraplanLaunchDialogProps):
           ) : null}
         </Box>
 
-        <Text dimColor>{dialogConfig.dialogPipeline}</Text>
+        <Text dimColor>
+          {isBridgeEnabled ? 'This will disable Remote Control for this session.' : dialogConfig.dialogPipeline}
+        </Text>
 
         <Select options={options} onChange={handleChoice} />
       </Box>

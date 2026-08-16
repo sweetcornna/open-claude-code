@@ -62,7 +62,12 @@ import {
   isValidAdvisorModel,
   modelSupportsAdvisor,
 } from 'src/utils/agents/advisor.js';
-import { checkHasTrustDialogAccepted, getGlobalConfig, saveGlobalConfig } from 'src/utils/config/config.js';
+import {
+  checkHasTrustDialogAccepted,
+  getGlobalConfig,
+  getRemoteControlAtStartup,
+  saveGlobalConfig,
+} from 'src/utils/config/config.js';
 import {
   checkOutTeleportedSessionBranch,
   processMessagesForTeleportResume,
@@ -529,6 +534,15 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
   // Extract remote option (can be true if no description provided, or a string)
   const remoteOption = (options as { remote?: string | true }).remote;
   const remote = remoteOption === true ? '' : (remoteOption ?? null);
+
+  // Extract --remote-control / --rc flag (enable bridge in interactive session)
+  const remoteControlOption =
+    (options as { remoteControl?: string | true }).remoteControl ?? (options as { rc?: string | true }).rc;
+  // Actual bridge check is deferred to after showSetupScreens() so that
+  // trust is established and GrowthBook has auth headers.
+  let remoteControl = false;
+  const remoteControlName =
+    typeof remoteControlOption === 'string' && remoteControlOption.length > 0 ? remoteControlOption : undefined;
 
   // Validate session ID if provided
   if (sessionId) {
@@ -1575,6 +1589,17 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
     );
     logForDebugging(`[STARTUP] showSetupScreens() completed in ${Date.now() - setupScreensStart}ms`);
 
+    // Now that trust is established and GrowthBook has auth headers,
+    // resolve the --remote-control / --rc entitlement gate.
+    if (feature('BRIDGE_MODE') && remoteControlOption !== undefined) {
+      const { getBridgeDisabledReason } = await import('src/bridge/bridgeEnabled.js');
+      const disabledReason = await getBridgeDisabledReason();
+      remoteControl = disabledReason === null;
+      if (disabledReason) {
+        process.stderr.write(chalk.yellow(`${disabledReason}\n--rc flag ignored.\n`));
+      }
+    }
+
     if (onboardingShown) {
       setInitialMainLoopModel(getUserSpecifiedModelSetting() || null);
       initialMainLoopModel = getInitialMainLoopModel();
@@ -1617,6 +1642,15 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
       resetUserCache();
       // Refresh GrowthBook after login to get updated feature flags (e.g., for claude.ai MCPs)
       refreshGrowthBookAfterAuthChange();
+      // Clear any stale trusted device token then enroll for Remote Control.
+      // Both self-gate on tengu_sessions_elevated_auth_enforcement internally
+      // — enrollTrustedDevice() via checkGate_CACHED_OR_BLOCKING (awaits
+      // the GrowthBook reinit above), clearTrustedDeviceToken() via the
+      // sync cached check (acceptable since clear is idempotent).
+      void import('src/bridge/trustedDevice.js').then(m => {
+        m.clearTrustedDeviceToken();
+        return m.enrollTrustedDevice();
+      });
     }
 
     // Validate that the active token's org matches forceLoginOrgUUID (if set
@@ -2295,6 +2329,12 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
   // All startup opt-in paths (--tools, --brief, defaultView) have fired
   // above; initialIsBriefOnly just reads the resulting state.
   const initialIsBriefOnly = feature('KAIROS') || feature('KAIROS_BRIEF') ? getUserMsgOptIn() : false;
+  const fullRemoteControl = remoteControl || getRemoteControlAtStartup() || kairosEnabled;
+  let ccrMirrorEnabled = false;
+  if (feature('CCR_MIRROR') && !fullRemoteControl) {
+    const bridgeEnabled = await import('src/bridge/bridgeEnabled.js');
+    ccrMirrorEnabled = bridgeEnabled.isCcrMirrorEnabled();
+  }
   const initialState: AppState = {
     settings: getInitialSettings(),
     tasks: {},
@@ -2341,6 +2381,19 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
     remoteSessionUrl: undefined,
     remoteConnectionStatus: 'connecting',
     remoteBackgroundTaskCount: 0,
+    replBridgeEnabled: fullRemoteControl || ccrMirrorEnabled,
+    replBridgeExplicit: remoteControl,
+    replBridgeOutboundOnly: ccrMirrorEnabled,
+    replBridgeConnected: false,
+    replBridgeSessionActive: false,
+    replBridgeReconnecting: false,
+    replBridgeConnectUrl: undefined,
+    replBridgeSessionUrl: undefined,
+    replBridgeEnvironmentId: undefined,
+    replBridgeSessionId: undefined,
+    replBridgeError: undefined,
+    replBridgeInitialName: remoteControlName,
+    showRemoteCallout: false,
     notifications: {
       current: null,
       queue: initialNotifications,
@@ -2716,6 +2769,7 @@ export const rootAction: RootActionHandler = async (prompt, options) => {
       ...initialState,
       isBriefOnly: true,
       kairosEnabled: false,
+      replBridgeEnabled: false,
     };
 
     const remoteCommands = filterCommandsForRemoteMode(commands);

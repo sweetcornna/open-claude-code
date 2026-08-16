@@ -107,6 +107,28 @@ Run `/login` in the REPL and pick **Anthropic Compatible** to use any third-part
 
 **Tab / Shift+Tab** moves between fields, **Enter** confirms; Enter on the last field saves.
 
+## Remote Control
+
+Drive the session you already have running from your phone or another browser — same conversation, live tool output, permission prompts, interrupts.
+
+```sh
+occ
+```
+
+```text
+/remote-control     # registers or logs you in on first use
+```
+
+Open the URL it prints, or scan the QR code with your phone.
+
+No configuration is needed: occ connects to the project-operated public server at `rc.cornna.xyz`. Note what that means — traffic is **relayed through and stored on that server**, it is not end-to-end encrypted, and roughly the 5,000 most recent events per session are retained. To keep everything on infrastructure you control, point occ at your own server:
+
+```sh
+export OCC_REMOTE_CONTROL_URL="https://rcs.example.com"
+```
+
+The repository ships that server (`packages/remote-control-server/`) — see the [self-hosting guide](./docs/en/features/remote-control-self-hosting.md). The older `CLAUDE_BRIDGE_BASE_URL` is still accepted.
+
 ## Features
 
 | Feature | Description | Docs |
@@ -115,7 +137,7 @@ Run `/login` in the REPL and pick **Anthropic Compatible** to use any third-part
 | **Ultracode multi-agent orchestration** | `/ultracode` plus the `Workflow` tool runs deterministic JS scripts (`agent`/`pipeline`/`parallel`/`phase`); `/workflows` gives a live panel, with journal replay and a concurrency cap | [docs](./docs/zh/features/workflow-scripts.md) |
 | **Artifacts** | The model renders HTML/dashboards/reports into standalone pages. Local `file://` output by default; opt in to a shared or self-hosted URL (Cloudflare Worker + R2, 7d/30d expiry) | [docs](./packages/cloud-artifacts/README.md) |
 | **ACP protocol** | Connect Zed, Cursor and other IDEs, with session resume, Skills and permission bridging | [docs](./docs/zh/features/acp-zed.md) |
-| **Remote Control** | `occ remote-control` hands the session to [Happy](https://github.com/slopus/happy) (phone / web / end-to-end encrypted) over occ's own ACP agent; the server is self-hostable | [docs](./docs/zh/features/remote-control-self-hosting.md) |
+| **Remote Control** | `/remote-control` and `occ --remote-control` attach the current REPL conversation to the native phone/Web bridge; `occ remote-control` serves a persistent remote environment. The server and Web UI are self-hostable | [docs](./docs/en/features/remote-control-self-hosting.md) |
 | **Langfuse monitoring** | Inspect every agent loop in detail, export to a dataset in one click | [docs](./docs/zh/features/langfuse-monitoring.md) |
 | **Web search** | Built-in search via Bing / Brave | [docs](./docs/zh/features/web-browser-tool.md) |
 | **Poor mode** | Disables memory extraction and typing suggestions to cut concurrent requests | `/poor` |

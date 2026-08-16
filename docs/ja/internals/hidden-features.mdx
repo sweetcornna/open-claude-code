@@ -60,12 +60,14 @@ KAIROS のツールセットには、`BriefTool`（構造化されたメッセ�
     **想定される方向性**: 大規模なプログラミングタスクを完全に自動化して並列処理すること。たとえば「認証システム全体をリファクタリングする」というタスクでは、複数の Agent が異なるモジュールを同時に処理できます。
   </Accordion>
 
-  <Accordion title="BRIDGE_MODE: リモートコントロール（削除済み）">
-    **ゲート**: なし — この flag と `src/bridge/` ディレクトリ全体は 2026-07 に削除されました。
+  <Accordion title="BRIDGE_MODE: リモートコントロール">
+    **ゲート**: `feature('BRIDGE_MODE')` — デフォルトビルドに組み込まれています。
 
-    Bridge Mode はかつて、自前の WebSocket bridge を介して occ をリモート制御する機能でした。この方法は現在、標準プロトコルに置き換えられています。occ が ACP agent（`occ --acp`）を提供し、リモートクライアントは [Happy](https://github.com/slopus/happy) が提供します。`occ remote-control` は両者を接続します。
+    Bridge Mode は、ネイティブの WebSocket bridge を介して occ をリモート制御する機能です。トランスポート層は `src/bridge/` にあり、セルフホスト可能なバックエンドと Web UI は `packages/remote-control-server/` にあります。`occ --remote-control` と REPL 内の `/remote-control` は**現在のセッション**を接続し、`occ remote-control` は現在のディレクトリを常駐リモート環境として動作させます。
 
-    **この機能が解決しようとした課題は今も存在します**。UI フロントエンドとバックエンドでの実行を分離し、スマートフォンやエディタから操作しながら、AI は開発マシン上で実行するというものです。ただし、独自のトランスポート層を実装する必要はなくなりました。
+    未設定の場合は本プロジェクトが運用する公開サーバー `https://rc.cornna.xyz` へ接続します。`OCC_REMOTE_CONTROL_URL`（旧キー名 `CLAUDE_BRIDGE_BASE_URL`）で自分のデプロイへ向けられます。
+
+    **この機能が解決する課題**: UI フロントエンドとバックエンドでの実行を分離し、スマートフォンやブラウザから操作しながら AI は開発マシン上で実行するというものです。既存の会話、リアルタイム出力、権限承認、中断はすべて同期されます。
   </Accordion>
 
   <Accordion title="WEB_BROWSER_TOOL: 組み込みブラウザ">
@@ -115,6 +117,6 @@ KAIROS のツールセットには、`BriefTool`（構造化されたメッセ�
 2. **一時的な存在から永続的な存在へ** — KAIROS の永続モードにより、AI は「常駐するチームメンバー」になる
 3. **単一の感覚からマルチモーダルへ** — VOICE_MODE と WEB_BROWSER_TOOL が対話の次元を広げる
 4. **単独作業から協調作業へ** — COORDINATOR_MODE により複数の AI が並列に協調する
-5. **ローカルから分散環境へ** — ACP（Happy と連携）と SSH_REMOTE がフロントエンドとバックエンドを分離する
+5. **ローカルから分散環境へ** — ACP、Remote Control bridge、SSH_REMOTE がフロントエンドとバックエンドを分離する
 
 Claude Code は「ターミナル内のチャットボット」から、**自律的で永続的、かつマルチモーダルな AI プログラミングの同僚**へと進化しています。

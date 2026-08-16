@@ -517,6 +517,7 @@ export async function trySessionMemoryCompaction(
   messages: Message[],
   agentId?: AgentId,
   autoCompactThreshold?: number,
+  signal?: AbortSignal,
 ): Promise<CompactionResult | null> {
   if (!shouldUseSessionMemoryCompaction()) {
     return null
@@ -585,6 +586,7 @@ export async function trySessionMemoryCompaction(
     // Run session start hooks to restore CLAUDE.md and other context
     const hookResults = await processSessionStartHooks('compact', {
       model: getMainLoopModel(),
+      signal,
     })
 
     // Get transcript path for the summary message

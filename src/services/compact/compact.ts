@@ -616,6 +616,7 @@ export async function compactConversation(
     // Execute SessionStart hooks after successful compaction
     const hookMessages = await processSessionStartHooks('compact', {
       model: context.options.mainLoopModel,
+      signal: context.abortController.signal,
     })
 
     // Create the compact boundary marker and summary messages before the
@@ -1008,6 +1009,7 @@ export async function partialCompactConversation(
     })
     const hookMessages = await processSessionStartHooks('compact', {
       model: context.options.mainLoopModel,
+      signal: context.abortController.signal,
     })
 
     const postCompactTokenCount = tokenCountFromLastAPIResponse([

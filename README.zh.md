@@ -127,6 +127,28 @@ bun run build    # 构建
 
 **Tab / Shift+Tab** 切换字段，**Enter** 确认，最后一个字段按 Enter 保存。配置细节（环境变量、按模型开 1M 上下文、`/provider` 档案切换）见 [`docs/zh/features/providers.md`](./docs/zh/features/providers.md)。
 
+## 远程控制（Remote Control）
+
+用手机或另一个浏览器操作**已经在跑的那个会话**：同一份对话、实时工具输出、权限审批和中断。
+
+```sh
+occ
+```
+
+```text
+/remote-control     # 首次使用会弹出注册 / 登录
+```
+
+打开终端输出的 URL，或用手机扫二维码。
+
+无需任何配置：occ 默认连接本项目运营的公共服务 `rc.cornna.xyz`。请注意这意味着什么——流量**经该服务中转并存储在服务端**，不是端到端加密，每个会话保留约最近 5,000 条事件。想让数据只留在自己的基础设施上，就把地址指向自己的服务：
+
+```sh
+export OCC_REMOTE_CONTROL_URL="https://rcs.example.com"
+```
+
+服务端就在本仓库里（`packages/remote-control-server/`），部署见[自托管文档](./docs/zh/features/remote-control-self-hosting.md)。旧的 `CLAUDE_BRIDGE_BASE_URL` 仍然有效。
+
 ## 主要特性
 
 | 特性 | 说明 | 文档 |
@@ -136,7 +158,7 @@ bun run build    # 构建
 | **🧩 插件市场** | 首次启动自动装上官方 `claude-plugins-official`（300+ 插件），`/plugin` 浏览安装；保留名只认 `github.com/anthropics/*` 严格来源 | `/plugin` |
 | **📦 Artifacts** | 模型把 HTML/看板/报告渲染成独立页面。默认落到本地（`file://`）；显式配置后才上传到公开 URL（7d/30d 自动过期，Cloudflare Worker + R2 可自托管） | [说明](./packages/cloud-artifacts/README.md) |
 | **ACP 协议支持** | 接入 Zed、Cursor 等 IDE，支持会话恢复、Skills、权限桥接 | [文档](./docs/zh/features/acp-zed.md) |
-| **Remote Control** | `occ remote-control` 把会话交给 [Happy](https://github.com/slopus/happy)（手机 / Web / 端到端加密），走的是 occ 自己的 ACP agent；服务端可自托管 | [文档](./docs/zh/features/remote-control-self-hosting.md) |
+| **Remote Control** | `/remote-control` 和 `occ --remote-control` 通过原生 bridge 把当前 REPL 对话同步到手机 / Web；`occ remote-control` 提供常驻远程环境。服务端和 Web UI 均可自托管 | [文档](./docs/zh/features/remote-control-self-hosting.md) |
 | **Langfuse 监控** | 每次 agent loop 的细节都能看到，可一键转为数据集 | [文档](./docs/zh/features/langfuse-monitoring.md) |
 | **Web Search** | 内置网页搜索，支持 Bing / Brave | [文档](./docs/zh/features/web-browser-tool.md) |
 | **Poor Mode** | 穷鬼模式，关掉记忆提取和键入建议，大幅减少并发请求 | `/poor` 开关 |

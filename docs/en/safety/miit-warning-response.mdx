@@ -65,7 +65,7 @@ The [Telemetry and remote-configuration delivery audit](../telemetry-remote-conf
 | --- | --- | --- |
 | Feature flag platform | Self-hosted GrowthBook instance | [GrowthBook adapter](../internals/growthbook-adapter) |
 | Error tracking | Self-hosted Sentry instance | [Sentry configuration](../internals/sentry-setup) |
-| Remote Control | Self-hosted Happy server (`HAPPY_SERVER_URL`); occ operates only as the ACP agent | [Remote Control](/docs/zh/features/remote-control-self-hosting) |
+| Remote Control | Defaults to this project's public relay `rc.cornna.xyz`; self-host the native Remote Control server (`packages/remote-control-server/` in this repository) and point `OCC_REMOTE_CONTROL_URL` at your own instance, with no third party involved | [Remote Control](/docs/zh/features/remote-control-self-hosting) |
 | HTML Artifact hosting | Cloudflare Worker + R2 | [Cloud Artifacts](https://github.com/sweetcornna/open-claude-code/blob/main/packages/cloud-artifacts/README.md) |
 | API endpoint | Any Anthropic API-compatible service | Configure with the `/login` command |
 

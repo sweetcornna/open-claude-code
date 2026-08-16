@@ -1,5 +1,6 @@
 import type { Notification } from 'src/context/notifications.js'
 import type { TodoList } from 'src/utils/todo/types.js'
+import type { BridgePermissionCallbacks } from '../bridge/bridgePermissionCallbacks.js'
 import type { Command } from '../commands.js'
 import type { ChannelPermissionCallbacks } from '../services/mcp/channelPermissions.js'
 import type { ElicitationRequestEvent } from '../services/mcp/elicitationHandler.js'
@@ -78,7 +79,13 @@ export type SpeculationState =
 
 export const IDLE_SPECULATION_STATE: SpeculationState = { status: 'idle' }
 
-export type FooterItem = 'tasks' | 'tmux' | 'bagel' | 'teams' | 'bg_agent'
+export type FooterItem =
+  | 'tasks'
+  | 'tmux'
+  | 'bagel'
+  | 'teams'
+  | 'bridge'
+  | 'bg_agent'
 
 export type AppState = DeepImmutable<{
   settings: SettingsJson
@@ -125,6 +132,21 @@ export type AppState = DeepImmutable<{
   // AppState.tasks is always empty in viewer mode — the tasks live in a
   // different process.
   remoteBackgroundTaskCount: number
+  // Native current-session bridge state. The lifecycle hook owns transitions;
+  // commands and UI only set the desired state and render these snapshots.
+  replBridgeEnabled: boolean
+  replBridgeExplicit: boolean
+  replBridgeOutboundOnly: boolean
+  replBridgeConnected: boolean
+  replBridgeSessionActive: boolean
+  replBridgeReconnecting: boolean
+  replBridgeConnectUrl: string | undefined
+  replBridgeSessionUrl: string | undefined
+  replBridgeEnvironmentId: string | undefined
+  replBridgeSessionId: string | undefined
+  replBridgeError: string | undefined
+  replBridgeInitialName: string | undefined
+  showRemoteCallout: boolean
 }> & {
   // Unified task state - excluded from DeepImmutable because TaskState contains function types
   tasks: { [taskId: string]: TaskState }
@@ -433,8 +455,10 @@ export type AppState = DeepImmutable<{
    * Session-only — deliberately not persisted to settings.
    */
   ultracodeMode?: boolean
+  // Permission callbacks for the native current-session bridge.
+  replBridgePermissionCallbacks?: BridgePermissionCallbacks
   // Channel permission callbacks — permission prompts over Telegram/iMessage/etc.
-  // Races against local UI + hooks + classifier via claim() in
+  // Races against local UI + bridge + hooks + classifier via claim() in
   // interactiveHandler.ts. Constructed once in useManageMCPConnections.
   channelPermissionCallbacks?: ChannelPermissionCallbacks
 }
@@ -473,6 +497,19 @@ export function getDefaultAppState(): AppState {
     remoteSessionUrl: undefined,
     remoteConnectionStatus: 'connecting',
     remoteBackgroundTaskCount: 0,
+    replBridgeEnabled: false,
+    replBridgeExplicit: false,
+    replBridgeOutboundOnly: false,
+    replBridgeConnected: false,
+    replBridgeSessionActive: false,
+    replBridgeReconnecting: false,
+    replBridgeConnectUrl: undefined,
+    replBridgeSessionUrl: undefined,
+    replBridgeEnvironmentId: undefined,
+    replBridgeSessionId: undefined,
+    replBridgeError: undefined,
+    replBridgeInitialName: undefined,
+    showRemoteCallout: false,
     toolPermissionContext: {
       ...getEmptyToolPermissionContext(),
       mode: initialMode,

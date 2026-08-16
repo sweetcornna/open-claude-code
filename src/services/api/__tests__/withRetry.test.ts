@@ -1570,6 +1570,34 @@ describe('configured model fallback', () => {
       })
     }
 
+    test('bounds compact retries instead of entering the persistent loop', async () => {
+      let calls = 0
+      const generator = withRetry(
+        async () => ({}) as unknown as Anthropic,
+        async () => {
+          calls++
+          throw new APIError(
+            529,
+            undefined,
+            'overloaded',
+            new Headers({ 'retry-after': '0' }),
+          )
+        },
+        {
+          maxRetries: 10,
+          model: 'claude-sonnet',
+          thinkingConfig: { type: 'disabled' },
+          querySource: 'compact',
+        },
+      )
+
+      await expect(async () => {
+        let step = await generator.next()
+        while (!step.done) step = await generator.next()
+      }).toThrow(CannotRetryError)
+      expect(calls).toBe(3)
+    })
+
     test('keeps waiting out a 5xx instead of switching', async () => {
       const generator = withRetry(
         async () => ({}) as unknown as Anthropic,

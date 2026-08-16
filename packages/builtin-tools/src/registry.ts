@@ -66,6 +66,14 @@ const MonitorTool = feature('MONITOR_TOOL')
 const SubscribePRTool = feature('KAIROS_GITHUB_WEBHOOKS')
   ? require('./tools/SubscribePRTool/SubscribePRTool.js').SubscribePRTool
   : null
+const SendUserFileTool = feature('KAIROS')
+  ? require('./tools/SendUserFileTool/SendUserFileTool.js').SendUserFileTool
+  : null
+const PushNotificationTool =
+  feature('KAIROS') || feature('KAIROS_PUSH_NOTIFICATION')
+    ? require('./tools/PushNotificationTool/PushNotificationTool.js')
+        .PushNotificationTool
+    : null
 /* eslint-enable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
 import { TaskOutputTool } from './tools/TaskOutputTool/TaskOutputTool.js'
 import { WebSearchTool } from './tools/WebSearchTool/WebSearchTool.js'
@@ -227,6 +235,8 @@ export function getAllBaseTools(env: RegistryEnv): Tools {
     ...(RemoteTriggerTool ? [RemoteTriggerTool] : []),
     ...(MonitorTool ? [MonitorTool] : []),
     BriefTool,
+    ...(SendUserFileTool ? [SendUserFileTool] : []),
+    ...(PushNotificationTool ? [PushNotificationTool] : []),
     ...(SubscribePRTool ? [SubscribePRTool] : []),
     ...(env.isPowerShellToolEnabled ? [getPowerShellTool()] : []),
     ...(DiscoverSkillsTool ? [DiscoverSkillsTool] : []),

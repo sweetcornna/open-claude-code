@@ -60,12 +60,14 @@ KAIROS includes `BriefTool` for structured message output and `SubscribePRTool` 
     **Inferred direction**: fully automated parallel execution of large programming tasks. For example, several agents could refactor separate modules of an entire authentication system concurrently.
   </Accordion>
 
-  <Accordion title="BRIDGE_MODE: remote control (removed)">
-    **Gate**: none. The flag and the entire `src/bridge/` directory were deleted in 2026-07.
+  <Accordion title="BRIDGE_MODE: remote control">
+    **Gate**: `feature('BRIDGE_MODE')` — compiled into the default build.
 
-    Bridge Mode previously allowed remote control of occ through a custom WebSocket bridge. The implementation now uses standard protocols: occ provides an ACP agent through `occ --acp`, [Happy](https://github.com/slopus/happy) provides the remote client, and `occ remote-control` connects the two.
+    Bridge Mode lets occ be controlled remotely over a native WebSocket bridge: the transport lives in `src/bridge/`, and the self-hostable backend and web UI live in `packages/remote-control-server/`. `occ --remote-control` and the in-REPL `/remote-control` attach the **current session**, while `occ remote-control` serves the current directory as a persistent remote environment.
 
-    **The underlying requirement remains valid**: separate the UI frontend from backend execution so that the user can operate from a phone or editor while the AI runs on the development machine. A custom transport layer is no longer required.
+    With nothing configured it connects to the project-operated public server `https://rc.cornna.xyz`; `OCC_REMOTE_CONTROL_URL` (or the older `CLAUDE_BRIDGE_BASE_URL`) points it at your own deployment.
+
+    **The problem it solves**: separating the UI frontend from backend execution, so the user can operate from a phone or browser while the AI runs on the development machine, with the existing conversation, live output, permission approvals, and interrupts all kept in sync.
   </Accordion>
 
   <Accordion title="WEB_BROWSER_TOOL: built-in browser">
@@ -115,6 +117,6 @@ Taken together, these 8 hidden features suggest a consistent product direction:
 2. **From transient to persistent** — KAIROS makes the model a resident team member
 3. **From one modality to several** — VOICE_MODE and WEB_BROWSER_TOOL extend the interaction surface
 4. **From individual execution to coordination** — COORDINATOR_MODE enables several models to collaborate in parallel
-5. **From local to distributed** — ACP with Happy, plus SSH_REMOTE, decouples the frontend from the backend
+5. **From local to distributed** — ACP, the Remote Control bridge, and SSH_REMOTE decouple the frontend from the backend
 
 Claude Code is developing from a terminal chatbot into an **autonomous, persistent, multimodal AI programming colleague**.

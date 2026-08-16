@@ -60,12 +60,14 @@ KAIROS 的工具集包括 `BriefTool`（结构化消息输出）和 `SubscribePR
     **推测方向**: 大型编程任务的全自动并行处理——比如"重构整个认证系统"可以同时由多个 Agent 处理不同模块。
   </Accordion>
 
-  <Accordion title="BRIDGE_MODE：远程遥控（已移除）">
-    **门控**: 无 —— 该 flag 与 `src/bridge/` 整个目录已于 2026-07 删除。
+  <Accordion title="BRIDGE_MODE：远程遥控">
+    **门控**: `feature('BRIDGE_MODE')` —— 默认编译进发行版。
 
-    Bridge Mode 曾经让 occ 通过自建的 WebSocket 桥接被远程控制。这条路线现在换成了标准协议：occ 提供 ACP agent（`occ --acp`），远程客户端由 [Happy](https://github.com/slopus/happy) 提供，`occ remote-control` 负责把两者接起来。
+    Bridge Mode 让 occ 通过原生 WebSocket 桥接被远程控制：传输层在 `src/bridge/`，可自托管的后端与 Web UI 在 `packages/remote-control-server/`。`occ --remote-control` 和 REPL 内的 `/remote-control` 把**当前会话**挂上去，`occ remote-control` 则把当前目录作为常驻远程环境运行。
 
-    **它想解决的问题依然成立**：UI 前端与后端执行分离——你在手机或编辑器里操作，AI 在你的开发机上执行。只是不再需要自己实现传输层。
+    不配置时连本项目运营的公共服务 `https://rc.cornna.xyz`；用 `OCC_REMOTE_CONTROL_URL`（或旧键名 `CLAUDE_BRIDGE_BASE_URL`）指向自己的部署。
+
+    **它解决的问题**：UI 前端与后端执行分离——你在手机或浏览器里操作，AI 在你的开发机上执行，已有对话、实时输出、权限审批和中断全部同步。
   </Accordion>
 
   <Accordion title="WEB_BROWSER_TOOL：内置浏览器">
@@ -115,6 +117,6 @@ KAIROS 的工具集包括 `BriefTool`（结构化消息输出）和 `SubscribePR
 2. **从短暂到持久** — KAIROS 的持久化模式让 AI 成为"常驻团队成员"
 3. **从单一到多感官** — VOICE_MODE、WEB_BROWSER_TOOL 拓展交互维度
 4. **从单兵到协同** — COORDINATOR_MODE 让多个 AI 并行协作
-5. **从本地到分布式** — ACP（配合 Happy）、SSH_REMOTE 解耦前后端
+5. **从本地到分布式** — ACP、Remote Control bridge、SSH_REMOTE 解耦前后端
 
 Claude Code 正在从一个"终端里的聊天机器人"进化为一个**自主、持久、多模态的 AI 编程同事**。

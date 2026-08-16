@@ -18,8 +18,10 @@ import { mkdir, writeFile } from 'fs/promises'
 import { basename, join } from 'path'
 import { z } from 'zod/v4'
 import { getSessionId } from '../bootstrap/state.js'
-import { getOauthConfig } from '../constants/oauth.js'
-import { getClaudeAIOAuthTokens } from '../utils/auth/auth.js'
+import {
+  getBridgeAccessToken,
+  getBridgeBaseUrl,
+} from '../bridge/bridgeConfig.js'
 import { logForDebugging } from '../utils/telemetry/debug.js'
 import { getClaudeConfigHomeDir } from '../utils/config/envUtils.js'
 import { lazySchema } from '../utils/collections/lazySchema.js'
@@ -27,19 +29,17 @@ import { lazySchema } from '../utils/collections/lazySchema.js'
 const DOWNLOAD_TIMEOUT_MS = 30_000
 
 /**
- * Token for the file-content fetch. CLAUDE_BRIDGE_OAUTH_TOKEN is the dev
- * override; otherwise the claude.ai OAuth keychain. Undefined = not logged in.
+ * Credentials for the file-content fetch. Both come from the bridge resolver so
+ * the token is always the one the target server issued — an account-mode RCS
+ * keeps its short-lived token in memory, never in CLAUDE_BRIDGE_OAUTH_TOKEN.
  */
 function getUploadsAccessToken(): string | undefined {
-  return (
-    process.env.CLAUDE_BRIDGE_OAUTH_TOKEN ||
-    getClaudeAIOAuthTokens()?.accessToken
-  )
+  return getBridgeAccessToken()
 }
 
-/** Base URL for the file-content fetch. Mirrors getRemoteSessionUrl's override. */
+/** Base URL for the file-content fetch. Mirrors getRemoteSessionUrl's target. */
 function getUploadsBaseUrl(): string {
-  return process.env.CLAUDE_BRIDGE_BASE_URL || getOauthConfig().BASE_API_URL
+  return getBridgeBaseUrl()
 }
 
 function debug(msg: string): void {
@@ -92,10 +92,9 @@ async function resolveOne(att: InboundAttachment): Promise<string | undefined> {
 
   let data: Buffer
   try {
-    // getOauthConfig() (via getUploadsBaseUrl) throws on a non-allowlisted
-    // CLAUDE_CODE_CUSTOM_OAUTH_URL — keep it inside the try so a bad
-    // FedStart URL degrades to "no @path" instead of crashing print.ts's
-    // reader loop (which has no catch around the await).
+    // URL construction stays inside the try so any resolution failure degrades
+    // to "no @path" instead of crashing print.ts's reader loop, which has no
+    // catch around the await.
     const url = `${getUploadsBaseUrl()}/api/oauth/files/${encodeURIComponent(att.file_uuid)}/content`
     const response = await axios.get(url, {
       headers: { Authorization: `Bearer ${token}` },

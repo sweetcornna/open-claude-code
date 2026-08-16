@@ -64,6 +64,7 @@ export const DEFAULT_BUILD_FEATURES = [
   'ULTRAPLAN', // 超级规划模式，深度分析后生成实施计划
   'DAEMON', // 守护进程模式，长驻 supervisor 管理后台 worker（非 GB 级主因）
   'ACP', // ACP 代理协议，支持外部 agent 接入
+  'BRIDGE_MODE', // 原生 Remote Control，将当前 REPL 会话接入自托管 bridge
   'WORKFLOW_SCRIPTS', // 工作流脚本（.claude/workflows/ 中的 YAML/MD）
   'MONITOR_TOOL', // Monitor 工具，流式监控后台进程输出
   'KAIROS', // Kairos 定时任务系统核心

@@ -152,32 +152,63 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Fast-path for `occ remote-control` (aliases: `rc` / `remote` / `sync` / `bridge`).
-  // Remote control is delegated to Happy, which drives occ's own ACP agent:
-  // `happy acp -- <occ> --acp`. Gated on ACP because that is the capability
-  // this path actually depends on. feature() stays inline for build-time DCE.
+  // Fast-path for `occ remote-control` (aliases: `rc` / `remote` / `sync` / `bridge`):
+  // serve this machine as a Remote Control environment. feature() stays inline
+  // for build-time dead-code elimination.
   if (
-    feature('ACP') &&
+    feature('BRIDGE_MODE') &&
     (args[0] === 'remote-control' ||
       args[0] === 'rc' ||
       args[0] === 'remote' ||
       args[0] === 'sync' ||
       args[0] === 'bridge')
   ) {
-    profileCheckpoint('cli_remote_control_path');
+    profileCheckpoint('cli_bridge_path');
     const { enableConfigs } = await import('../utils/config/config.js');
     enableConfigs();
+    // settings.json's `env` block is the persistent form of
+    // CLAUDE_BRIDGE_BASE_URL, and the REPL only applies it in rootAction —
+    // which this fast path bypasses. Without this, a self-hosted server
+    // configured in settings.json is invisible to every branch below and the
+    // process gets gated as if it targeted the official service. bridgeMain
+    // re-applies it once the target directory is known, so project-scoped
+    // settings still win.
+    const { applyConfigEnvironmentVariables } = await import('../utils/config/managedEnv.js');
+    applyConfigEnvironmentVariables();
 
-    // Remote control is subject to org policy regardless of who transports it.
+    const { getBridgeDisabledReason, checkBridgeMinVersion } = await import('../bridge/bridgeEnabled.js');
+    const { getBridgeAccessToken, isSelfHostedBridge, shouldBlockBridgeStartupForLogin } = await import(
+      '../bridge/bridgeConfig.js'
+    );
+    const { bridgeMain } = await import('../bridge/bridgeMain.js');
+    const { BRIDGE_LOGIN_ERROR } = await import('../bridge/types.js');
+    const { getClaudeAIOAuthTokens } = await import('../utils/auth/auth.js');
+    const { exitWithError } = await import('../utils/process/process.js');
+
+    if (
+      shouldBlockBridgeStartupForLogin({
+        selfHosted: isSelfHostedBridge(),
+        hasCredential: () => !!getClaudeAIOAuthTokens()?.accessToken || !!getBridgeAccessToken(),
+      })
+    ) {
+      exitWithError(BRIDGE_LOGIN_ERROR);
+    }
+    const disabledReason = await getBridgeDisabledReason();
+    if (disabledReason) {
+      exitWithError(`Error: ${disabledReason}`);
+    }
+    const versionError = checkBridgeMinVersion();
+    if (versionError) {
+      exitWithError(versionError);
+    }
+
     const { waitForPolicyLimitsToLoad, isPolicyAllowed } = await import('../services/policyLimits/index.js');
     await waitForPolicyLimitsToLoad();
     if (!isPolicyAllowed('allow_remote_control')) {
-      const { exitWithError } = await import('../utils/process/process.js');
       exitWithError("Error: Remote Control is disabled by your organization's policy.");
     }
 
-    const { runRemoteControlLauncher } = await import('../cli/remoteControlLauncher.js');
-    process.exitCode = await runRemoteControlLauncher(args.slice(1));
+    await bridgeMain(args.slice(1));
     return;
   }
 

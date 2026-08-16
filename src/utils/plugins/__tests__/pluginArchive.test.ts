@@ -165,7 +165,9 @@ describe('size limits', () => {
       PluginArchiveError,
     )
     expect(existsSync(target)).toBe(false)
-  })
+    // Deflating 320MB at level 9 alone takes 5–7s on a CI runner — past the 5s
+    // default; the assertion is about refusal, not speed.
+  }, 60_000)
 
   test('refuses bytes larger than the download cap outright', async () => {
     const oversized = new Uint8Array(PLUGIN_ARCHIVE_LIMITS.maxDownloadBytes + 1)

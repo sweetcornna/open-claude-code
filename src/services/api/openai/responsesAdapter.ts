@@ -37,6 +37,10 @@ import {
   parseRetryAfterFromErrorPayload,
   retryOpenAIRequest,
 } from './retry.js'
+import {
+  resolveStreamIdleTimeoutMs,
+  streamIdleTimeoutError,
+} from './streamIdleTimeout.js'
 
 type ResponsesInputItem = Record<string, unknown>
 type ResponsesTool = Record<string, unknown>
@@ -575,12 +579,10 @@ async function* parseSSE(
             : new DOMException('The operation was aborted', 'AbortError'),
         )
       const timer = setTimeout(() => {
-        const error = new OpenAIRequestError(
-          `${options.label} stream idle timeout after ${options.idleTimeoutMs}ms`,
-          {
-            retryable: true,
-            ...(retryWindowClosed() ? { replayable: false } : {}),
-          },
+        const error = streamIdleTimeoutError(
+          options.label,
+          options.idleTimeoutMs,
+          { replayable: !retryWindowClosed() },
         )
         rejectOnce(error)
         options.abort(error)
@@ -1213,9 +1215,7 @@ async function fetchResponsesStream(params: {
 }): Promise<AsyncIterable<Record<string, unknown>>> {
   const discardsPartialOutput = params.discardsPartialOutput === true
   const fetchFn = params.fetchOverride ?? (globalThis.fetch as typeof fetch)
-  const idleTimeoutMs =
-    Number.parseInt(process.env.CLAUDE_STREAM_IDLE_TIMEOUT_MS ?? '', 10) ||
-    90_000
+  const idleTimeoutMs = resolveStreamIdleTimeoutMs()
   // Read at attempt time, not captured once: optional-field degradation
   // replaces it before the same retry ladder advances to its next attempt.
   let request = params.request

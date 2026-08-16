@@ -36,8 +36,12 @@ type ReadResult = TextResult | UnchangedResult
 // over 160 bytes is oversized without touching countTokensWithAPI.
 const MAX_TOKENS = 40
 
+// packages/builtin-tools/src/tools/FileReadTool/__tests__ → repo root
+const REPO_ROOT = join(import.meta.dir, '..', '..', '..', '..', '..', '..')
+
 let tmpDir: string
 let previousSimple: string | undefined
+let previousFixturesRoot: string | undefined
 
 function makeContext(readFileState: InstanceType<typeof FileStateCache>) {
   return {
@@ -80,11 +84,22 @@ beforeAll(() => {
   // and it touches the real filesystem.
   process.env.CLAUDE_CODE_SIMPLE = '1'
   tmpDir = mkdtempSync(join(tmpdir(), 'occ-read-tokencap-'))
+  // The token counts below are served from committed VCR fixtures under
+  // <repo>/fixtures. Pin the root to the repo explicitly: withFixture falls
+  // back to getCwd(), which earlier tests in an unsharded run can leave
+  // pointing at a scratch dir, and a scratch root would make CI throw
+  // "Fixture missing" (it refuses to record) while local runs silently
+  // re-record — the two environments must read the same files.
+  previousFixturesRoot = process.env.CLAUDE_CODE_TEST_FIXTURES_ROOT
+  process.env.CLAUDE_CODE_TEST_FIXTURES_ROOT = REPO_ROOT
 })
 
 afterAll(() => {
   if (previousSimple === undefined) delete process.env.CLAUDE_CODE_SIMPLE
   else process.env.CLAUDE_CODE_SIMPLE = previousSimple
+  if (previousFixturesRoot === undefined)
+    delete process.env.CLAUDE_CODE_TEST_FIXTURES_ROOT
+  else process.env.CLAUDE_CODE_TEST_FIXTURES_ROOT = previousFixturesRoot
   rmSync(tmpDir, { recursive: true, force: true })
 })
 

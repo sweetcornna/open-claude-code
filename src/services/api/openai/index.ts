@@ -95,6 +95,10 @@ import {
 } from '../../../utils/messages.js'
 import { OpenAIRequestError } from './retry.js'
 import {
+  resolveStreamIdleTimeoutMs,
+  withIdleTimeout,
+} from './streamIdleTimeout.js'
+import {
   isSearchExtraToolsEnabled,
   shouldAppendEphemeralDeferredToolList,
 } from '../../../utils/tools/searchExtraTools.js'
@@ -171,26 +175,51 @@ async function createChatStreamWithCacheKeyFallback(params: {
     fetchOverride: params.fetchOverride,
     source: params.querySource,
   })
+  // A per-attempt controller, forwarding the caller's signal, so the idle
+  // watchdog can kill this request's socket without cancelling the turn. The
+  // Responses lane has had exactly this shape since it was written.
+  const controller = new AbortController()
+  const forwardAbort = () => controller.abort(params.signal.reason)
+  if (params.signal.aborted) forwardAbort()
+  else params.signal.addEventListener('abort', forwardAbort, { once: true })
+  const releaseAbortForwarding = () =>
+    params.signal.removeEventListener('abort', forwardAbort)
+
+  const idleTimeoutMs = resolveStreamIdleTimeoutMs()
+  const guard = (stream: AsyncIterable<ChatCompletionChunk>) =>
+    withIdleTimeout(stream, {
+      timeoutMs: idleTimeoutMs,
+      label: 'OpenAI Chat',
+      onTimeout: error => controller.abort(error),
+      onClose: releaseAbortForwarding,
+    })
+
   const create = (cacheKey: string | undefined) =>
     client.chat.completions.create(params.buildBody(cacheKey), {
-      signal: params.signal,
+      signal: controller.signal,
     }) as unknown as Promise<AsyncIterable<ChatCompletionChunk>>
 
-  if (params.promptCacheKey === undefined) {
-    return create(undefined)
-  }
-
   try {
-    return await create(params.promptCacheKey)
-  } catch (error) {
-    if (params.signal.aborted || !isPromptCacheKeyRejection(error)) {
-      throw error
+    if (params.promptCacheKey === undefined) {
+      return guard(await create(undefined))
     }
-    markPromptCacheKeyRejected()
-    logForDebugging(
-      '[OpenAI] endpoint rejected prompt_cache_key; retrying once without it and suppressing it for the rest of the session. Set OPENAI_PROMPT_CACHE_KEY=0 to skip this probe.',
-    )
-    return create(undefined)
+
+    try {
+      return guard(await create(params.promptCacheKey))
+    } catch (error) {
+      if (params.signal.aborted || !isPromptCacheKeyRejection(error)) {
+        throw error
+      }
+      markPromptCacheKeyRejected()
+      logForDebugging(
+        '[OpenAI] endpoint rejected prompt_cache_key; retrying once without it and suppressing it for the rest of the session. Set OPENAI_PROMPT_CACHE_KEY=0 to skip this probe.',
+      )
+      return guard(await create(undefined))
+    }
+  } catch (error) {
+    // Nothing was handed back, so `onClose` will never run for this attempt.
+    releaseAbortForwarding()
+    throw error
   }
 }
 
@@ -432,6 +461,7 @@ export async function* queryModelOpenAI(
     // the Chat Completions adapter.
     const adaptedStream = retryThirdPartyEventStream({
       signal,
+      querySource: options.querySource,
       onRetry: () => clearOpenAIClientCache(),
       create: async () =>
         wireProtocol === 'responses'

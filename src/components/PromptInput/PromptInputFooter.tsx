@@ -1,6 +1,8 @@
 import { feature } from 'bun:bundle';
 import * as React from 'react';
 import { memo, type ReactNode, useMemo, useRef, useState } from 'react';
+import { isBridgeEnabled } from '../../bridge/bridgeEnabled.js';
+import { getBridgeStatus } from '../../bridge/bridgeStatusUtil.js';
 import { useSetPromptOverlay } from '../../context/promptOverlayContext.js';
 import type { VerificationStatus } from '../../hooks/useApiKeyVerification.js';
 import type { IDESelection } from '../../hooks/useIdeSelection.js';
@@ -41,6 +43,7 @@ type Props = {
   isLoading: boolean;
   tasksSelected: boolean;
   teamsSelected: boolean;
+  bridgeSelected: boolean;
   tmuxSelected: boolean;
   teammateFooterIndex?: number;
   ideSelection: IDESelection | undefined;
@@ -71,6 +74,7 @@ function PromptInputFooter({
   isLoading,
   tasksSelected,
   teamsSelected,
+  bridgeSelected,
   tmuxSelected,
   teammateFooterIndex,
   ideSelection,
@@ -175,6 +179,7 @@ function PromptInputFooter({
             />
           )}
           {process.env.USER_TYPE === 'ant' && isUndercover() && <Text dimColor>undercover</Text>}
+          <BridgeStatusIndicator bridgeSelected={bridgeSelected} />
         </Box>
       </Box>
       {process.env.USER_TYPE === 'ant' && <CoordinatorTaskPanel />}
@@ -183,3 +188,39 @@ function PromptInputFooter({
 }
 
 export default memo(PromptInputFooter);
+
+type BridgeStatusProps = {
+  bridgeSelected: boolean;
+};
+
+function BridgeStatusIndicator({ bridgeSelected }: BridgeStatusProps): React.ReactNode {
+  if (!feature('BRIDGE_MODE')) return null;
+
+  const enabled = useAppState(s => s.replBridgeEnabled);
+  const connected = useAppState(s => s.replBridgeConnected);
+  const sessionActive = useAppState(s => s.replBridgeSessionActive);
+  const reconnecting = useAppState(s => s.replBridgeReconnecting);
+  const explicit = useAppState(s => s.replBridgeExplicit);
+
+  // Failed state is surfaced via notification (useReplBridge), not a footer pill.
+  if (!isBridgeEnabled() || !enabled) return null;
+
+  const status = getBridgeStatus({
+    error: undefined,
+    connected,
+    sessionActive,
+    reconnecting,
+  });
+
+  // For implicit (config-driven) remote, only show the reconnecting state
+  if (!explicit && status.label !== 'Remote Control reconnecting') {
+    return null;
+  }
+
+  return (
+    <Text color={bridgeSelected ? 'background' : status.color} inverse={bridgeSelected} wrap="truncate">
+      {status.label}
+      {bridgeSelected && <Text dimColor> · Enter to view</Text>}
+    </Text>
+  );
+}

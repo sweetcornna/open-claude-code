@@ -46,7 +46,7 @@ occ 与官方 Claude Code 必须能装在同一台机器上互不干扰。这不
 - **Runtime 是 Bun 不是 Node**；构建产物经 `import.meta.require` 后处理后 node 也能跑。
 - **为什么 Vite 必须代码分割**：Bun/JSC 会全量解析单个大 JS 文件的 bytecode 和 JIT，单文件 17MB 产物导致 RSS 暴涨至 ~1GB（Node/V8 懒解析仅需 ~220MB）。代码分割为 600+ 小 chunk 后 `--version` RSS 从 966MB 降至 35MB。**不要把构建"优化"回单文件。**
 - **Vendor 路径解析**：chunk 在 `dist/` 或 `dist/chunks/`，vendor 二进制在 `dist/vendor/`；统一用 `src/utils/distRoot.ts` 的 `distRoot`，不要内联 `import.meta.url` 推算。
-- Defines 集中在 `scripts/defines.ts`（版本号从 package.json 读）；dev 与 build 的默认 feature 列表**同源**（`DEFAULT_BUILD_FEATURES`，33 个），不是「全部启用」。
+- Defines 集中在 `scripts/defines.ts`（版本号从 package.json 读）；dev 与 build 的默认 feature 列表**同源**（`DEFAULT_BUILD_FEATURES`，35 个），不是「全部启用」。
 
 ### Entry / Core Loop
 
@@ -77,12 +77,13 @@ occ 与官方 Claude Code 必须能装在同一台机器上互不干扰。这不
 - `packages/mcp-client/` 是**平行实现，连接/发现/执行那半边未接线**——生产只用它 4 个工具函数。不要为了一致性统一。
 - `packages/cloud-artifacts/` 是独立 Cloudflare Worker，workspace 成员但**不被主 CLI import**。详见其 README。
 
-### 已删/已委托的子系统（不要去找、不要恢复）
+### 子系统边界（不要误删或混用）
 
-- **Remote Control**：传输层已删（`src/bridge/`、RCS、acp-link，约 45k 行，2026-07）。`occ remote-control` = exec `happy acp -- occ --acp`（Happy 项目负责客户端半边）。occ 侧命令行由 `buildCliLaunch()` 推导，**不要**手写 `process.execPath + argv[1]`。编辑器集成走 `occ --acp` 直连。
+- **Remote Control**：原生传输层位于 `src/bridge/`，自托管后端和 Web UI 位于 `packages/remote-control-server/`。`/remote-control` 与 `occ --remote-control` 挂载当前 REPL；`occ remote-control` 运行常驻 headless bridge。编辑器集成仍走 `occ --acp` 直连，ACP 的新 session 不能替代当前 REPL 的 Remote Control。
+  - **默认连本项目的公共 RCS**（`DEFAULT_REMOTE_CONTROL_URL` = `https://rc.cornna.xyz`，账号制、开放注册），解析顺序 `OCC_REMOTE_CONTROL_URL` > `CLAUDE_BRIDGE_BASE_URL`（旧键名，存量 settings.json 在用）> 默认值，唯一真源是 `src/bridge/bridgeBaseUrl.ts`（叶子模块，`constants/product.ts` 要从它派生 session URL）。因此 **`isSelfHostedBridge()` 默认为真** —— 它答的是「不是 Anthropic 那条 bridge」，只有把 URL 显式设成 `getOauthConfig().BASE_API_URL` 才走 claude.ai 路径（那条路要订阅 + 一方 GrowthBook `tengu_ccr_bridge`，而 1P GrowthBook 在 occ 里默认关，所以它作为默认值等于功能永久不可用）。新增读 base URL 的地方一律走 resolver，别再直接读 `process.env.CLAUDE_BRIDGE_BASE_URL`。
 - **DIRECT_CONNECT**（`src/server/`、`claude server/open`、`cc://`）与 `packages/weixin/` 已删（2026-07）。
 - **不内置 Chrome MCP**：用户可通过普通 MCP 配置接入任意浏览器工具，`chrome-devtools` 等名称不保留。
-- Daemon 的 `DAEMON_WORKER_KINDS` 目前是**空的**（唯一 worker 随 bridge 删除），supervisor 机制保留为扩展点。后台会话（`daemon bg`/`attach` 等）不受影响。
+- Daemon 的 `DAEMON_WORKER_KINDS` 注册了 `remoteControl` worker；supervisor 负责其重启和 parking。后台会话（`daemon bg`/`attach` 等）与该 worker 独立。
 - 已移除的 feature flag（代码全删，别再引用）：`CONTEXT_COLLAPSE`、`UDS_INBOX`、`LAN_PIPES`、`REVIEW_ARTIFACT`、`TEAMMEM`、`HISTORY_SNIP`、`OVERFLOW_TEST_TOOL` 及对应命令/工具。
 - **`FORK_SUBAGENT` 并未被移除**（文档曾写错）——只是不进默认编译列表，`FEATURE_FORK_SUBAGENT=1 bun run dev` 可启用；`/fork` 现在是 `/branch` 的 alias。
 - Analytics / GrowthBook / Sentry **是完整实现，别当 stub 删**。Datadog 要 `NODE_ENV=production` + provider 为 `firstParty` + `DATADOG_LOGS_ENDPOINT`/`DATADOG_API_KEY`，Sentry 要 `SENTRY_DSN`。**一方链路（1P 事件上报 + GrowthBook）2.45.0 起改成显式 opt-in** —— 此前这里写的「默认门控为假」是错的：`is1PEventLoggingEnabled()` 只判「没 opt-out」，于是每个 occ 会话默认都在往 `api.anthropic.com` POST 事件、拉 GrowthBook 实验，并把 payload 落进 `~/.occ.json`（实测 491 条，`/logout` 不清，两次功能事故：`tengu_cobalt_raccoon` 让自动压缩整体失效、`tengu_ultraplan_config` 让 `/ultraplan` 消失）。
@@ -93,7 +94,7 @@ occ 与官方 Claude Code 必须能装在同一台机器上互不干扰。这不
 ### Feature Flags
 
 - 统一 `import { feature } from 'bun:bundle'` + `feature('FLAG_NAME')`；**只能直接用在 `if` 或三元条件位置**（Bun 编译器限制），不能赋值变量、不能进箭头函数体、不能作 `&&` 链一部分。不要在 `cli.tsx` 重定义 `feature`。
-- 环境变量 `FEATURE_<NAME>` 覆盖单个 flag：`1`/`true` 开，`0`/`false`/空关（**关也对默认列表里的 flag 生效**，这是把某个 feature 从构建里摘掉的唯一办法）。解析集中在 `scripts/defines.ts` 的 `resolveBuildFeatures()`，`dev.ts` 与 Vite 插件共用——早先两边各自只判断变量**是否存在**，`FEATURE_X=0` 反而会把功能编进发布产物。默认列表见同文件的 `DEFAULT_BUILD_FEATURES`（dev/build 同源，33 个）。
+- 环境变量 `FEATURE_<NAME>` 覆盖单个 flag：`1`/`true` 开，`0`/`false`/空关（**关也对默认列表里的 flag 生效**，这是把某个 feature 从构建里摘掉的唯一办法）。解析集中在 `scripts/defines.ts` 的 `resolveBuildFeatures()`，`dev.ts` 与 Vite 插件共用——早先两边各自只判断变量**是否存在**，`FEATURE_X=0` 反而会把功能编进发布产物。默认列表见同文件的 `DEFAULT_BUILD_FEATURES`（dev/build 同源，35 个）。
 - `MCP_2026`（2026-08-02 起默认编译进）**只管客户端要不要用 `server/discover` 探测** —— serve 双时代、outputSchema 降级、OAuth 加固不受它门控；协商到的「时代」是连接属性（问 `getProtocolEra()`，不要再判标志）。见 `docs/zh/features/mcp-2026.md`。
 - `SKILL_LEARNING` 未编译进默认列表；运行时另由 `SKILL_LEARNING_ENABLED` 控制。
 

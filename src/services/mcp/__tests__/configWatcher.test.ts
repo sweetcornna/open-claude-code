@@ -23,6 +23,16 @@ function settle(): Promise<void> {
   return new Promise(r => setTimeout(r, 2600))
 }
 
+/**
+ * watchFile takes its baseline stat asynchronously after registration. A
+ * mutation that lands before that first stat is invisible (baseline and next
+ * poll agree), so give the watcher one full poll tick to arm before mutating —
+ * on a loaded CI runner `unlink` reliably won that race.
+ */
+function armed(): Promise<void> {
+  return new Promise(r => setTimeout(r, 1200))
+}
+
 describe('startMcpConfigWatcher', () => {
   test('fires when a watched file is modified', async () => {
     const dir = await makeDir()
@@ -31,12 +41,13 @@ describe('startMcpConfigWatcher', () => {
 
     let fired = 0
     stops.push(startMcpConfigWatcher([file], () => void fired++))
+    await armed()
 
     await writeFile(file, '{"mcpServers":{"a":{"command":"x"}}}')
     await settle()
 
     expect(fired).toBeGreaterThan(0)
-  })
+  }, 15_000)
 
   test('fires when a watched file is deleted — the case that leaked processes', async () => {
     const dir = await makeDir()
@@ -45,12 +56,13 @@ describe('startMcpConfigWatcher', () => {
 
     let fired = 0
     stops.push(startMcpConfigWatcher([file], () => void fired++))
+    await armed()
 
     await unlink(file)
     await settle()
 
     expect(fired).toBeGreaterThan(0)
-  })
+  }, 15_000)
 
   test('fires when a watched file appears for the first time', async () => {
     // Watching a not-yet-existing path is why this uses watchFile rather than
