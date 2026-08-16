@@ -11,7 +11,7 @@
 
 DAEMON runs occ as a background daemon. The main process, the supervisor, manages the lifecycle of multiple worker child processes and communicates through filesystem state files.
 
-> **No supervisor workers are currently registered.** The only worker, `remoteControl`, was the headless driver for the self-hosted bridge. It was removed with the bridge in 2026-07 because remote control is now delegated to Happy; see [Remote Control](./remote-control-self-hosting.md). `DAEMON_WORKER_KINDS` is now an empty array, and `occ daemon start` states this explicitly before returning immediately. The spawn, backoff, parking, and state-file mechanisms remain intact as an extension point for the next long-running worker. The background-session subcommands (`daemon bg` / `attach` / `logs` / `kill`), gated by `BG_SESSIONS`, are unaffected and continue to work normally.
+> **The `remoteControl` supervisor worker is registered.** It uses `runBridgeHeadless()` to connect to the official endpoint or a self-hosted RCS and accept remote sessions. The supervisor owns crash restarts, exponential backoff, and permanent-error parking. Background-session subcommands (`daemon bg` / `attach` / `logs` / `kill`), gated by `BG_SESSIONS`, remain independent of this worker.
 
 ## II. Implementation Architecture
 
@@ -20,7 +20,7 @@ DAEMON runs occ as a background daemon. The main process, the supervisor, manage
 | Module | File | Status |
 |------|------|------|
 | Daemon main process | `src/daemon/main.ts` | **Implemented** — Supervisor with subcommands, Worker lifecycle management, and exponential-backoff restarts |
-| Worker registration | `src/daemon/workerRegistry.ts` | **Implemented** — `DAEMON_WORKER_KINDS` is currently empty |
+| Worker registration | `src/daemon/workerRegistry.ts` | **Implemented** — registers `remoteControl` and runs `runBridgeHeadless()` |
 | Daemon state | `src/daemon/state.ts` | **Implemented** — reads, writes, and queries PID/state files |
 | CLI routing | `src/entrypoints/cli.tsx` | **Wired** — `--daemon-worker` and the `daemon` subcommand |
 | Command registration | `src/commands.ts` | **Wired** — DAEMON gating |

@@ -65,7 +65,7 @@ grep -rn "growthbook\|remoteManagedSettings\|settingsSync" src/
 | --- | --- | --- |
 | Feature Flag プラットフォーム | 独自の GrowthBook インスタンス | [GrowthBook アダプター](../internals/growthbook-adapter) |
 | エラー追跡 | 独自の Sentry インスタンス | [Sentry の設定](../internals/sentry-setup) |
-| リモートコントロール | Happy サーバーをセルフホスト（`HAPPY_SERVER_URL`）。occ は ACP agent としてのみ動作 | [Remote Control](/docs/zh/features/remote-control-self-hosting) |
+| リモートコントロール | 既定では本プロジェクトの公開リレー `rc.cornna.xyz` を利用。ネイティブの Remote Control サーバー（本リポジトリの `packages/remote-control-server/`）をセルフホストし、`OCC_REMOTE_CONTROL_URL` で自分のインスタンスを指定すれば、サードパーティは介在しない | [Remote Control](/docs/zh/features/remote-control-self-hosting) |
 | HTML Artifact のホスティング | Cloudflare Worker + R2 | [Cloud Artifacts](https://github.com/sweetcornna/open-claude-code/blob/main/packages/cloud-artifacts/README.md) |
 | API エンドポイント | 任意の Anthropic API 互換サービス | `/login` コマンドで設定 |
 

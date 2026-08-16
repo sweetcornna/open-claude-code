@@ -25,6 +25,8 @@
    纯 TS yoga/color-diff 回退实现。
    **否决**对比报告中「移植 src/bridge/ 与 src/server/」的建议 —— 与本仓库 2026-07
    刻意删除 bridge（约 45k 行、远程控制委托 Happy）及 DIRECT_CONNECT 移除的决策直接冲突。
+   **2026-08-15 更新**：该决策已被推翻，原生 bridge（`src/bridge/` +
+   `packages/remote-control-server/`）在本次发布中恢复，此处的否决意见不再适用。
 6. **claude-code-official（CHANGELOG 至 2.1.220）** 对照出一批缺失功能（见任务一 1C 红表）；
    `plugins/plugin-dev`、`examples/settings/*.json`、`examples/hooks` 是 plugin/hook/设置
    契约的权威验收材料。

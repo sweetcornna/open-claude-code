@@ -4,6 +4,17 @@ open-claude-code(`occ`)的对外发布记录。
 
 格式由应用内「更新说明」的解析器约束（`parseChangelog`，见 `src/utils/update/releaseNotes.ts`）：版本标题必须是 `## <semver>` 或 `## <semver> - <日期>`，条目必须是顶层 `- ` 列表项。嵌套列表会被拍平成同级条目，所以不要用；第一个 `## ` 之前的内容会被整段跳过。新版本小节由 `bun run release <version>` 插入。
 
+## 2.47.0 - 2026-08-16
+
+- **恢复原生 Remote Control，并把它接到当前会话上。** `/remote-control`（或启动时 `occ --remote-control`）把**正在运行的这一个 REPL** 同步到浏览器：远端看到同一份对话与实时工具输出，发回的消息进入同一条队列，权限审批与中断作用于当前回合，断线后可重连继续。此前 `occ remote-control` 只是把 `occ --acp` 交给 Happy 另起一个 ACP 会话，与当前终端里的对话没有任何关系。ACP（`occ --acp`）仍是给编辑器用的独立入口，不受影响；`occ remote-control` 恢复为常驻无头环境模式。
+- **Remote Control 开箱即用，默认连接项目公共服务器。** 不配置任何环境变量时，`/remote-control`、`occ --remote-control` 与常驻模式都连到项目运营的 `https://rc.cornna.xyz`（账号制、开放注册），不再落到 occ 永远满足不了的 claude.ai 订阅加 GrowthBook 门控。想把数据留在自己手里，设 `OCC_REMOTE_CONTROL_URL` 指向自托管 RCS；旧键 `CLAUDE_BRIDGE_BASE_URL` 仍接受，优先级低于新键。会话流量经服务器中继并保存在服务端——不是端到端加密，每个会话保留最近约 5,000 条事件——这一点在快速开始处就写明。
+- **Remote Control 改为账号登录。** 首次使用时在当前 REPL 内弹出登录/注册对话框（用户名加密码，密码掩码输入，服务端关闭注册时不显示注册项）。登录成功后只把服务器地址、用户名与**滚动换新的 refresh token** 存进系统 Keychain 或加密 Local Vault，密码与短效 access token 永不落盘，凭据按服务器地址隔离。`/remote-control status` 查看状态，`/remote-control logout` 撤销服务端凭据并清除本地记录。浏览器侧用 URL 片段里 2 分钟有效、一次性的配对码换取 `Secure` / `HttpOnly` / `SameSite=Strict` cookie，长期凭据不进 URL；每次展开二维码都会现场签发新的配对码。无 TTY 时返回结构化的 `auth_required`，常驻模式在终端里走带掩码的登录提示。
+- **新增自托管 Remote Control Server 0.2.0。** 多租户账号服务：SQLite（WAL）持久化账号、令牌摘要、环境、会话与事件，重启不丢；密码只存 Argon2id hash，access、refresh、浏览器、配对、环境与工作凭据只存 HMAC 摘要；refresh token 每次使用轮换，重放旧 token 会撤销该账号的全部凭据；WebSocket 与 SSE 在每一帧、每次投递与每次保活上重新校验凭据、账号与会话状态，登出、撤销、禁用账号与 worker epoch 轮换会主动关闭在线连接；注册与登录按 IP 和用户名分别限流并回 `Retry-After`；每账号有环境与会话配额，单条事件受 `RCS_MAX_EVENT_BYTES` 约束，每个会话保留最近 5,000 条事件；管理 CLI 提供 `list-users`、`disable-user` 与 `reset-password`（掩码 TTY 输入，没有邮件找回）。生产模式强制两个 32 字符以上且互不相同的 secret，镜像随 `rcs-v*` 标签发布到 `ghcr.io/sweetcornna/remote-control-server`，旧的共享 API key 模式只在显式设置 `RCS_LEGACY_API_KEY_AUTH=1` 时可用。部署、反向代理、备份与 secret 轮换见自托管文档。
+- **Remote Control 连接不再每 15 分钟被迫断开重连。** 服务端在每一帧上重新校验建立连接时用的那一份凭据，而账号 access token 只有 15 分钟寿命，于是一条健康的长连接每 15 分钟就被关闭一次；随后的恢复是整套环境重新注册，还可能落到一个全新的会话 ID 上。现在 occ 在到期前主动换取新 token，并在旧连接仍然可用时重建传输，整个过程不到一秒且用户无感。
+- **修复 compact 有时会无限卡住。** 三处根因：Anthropic 线的持久重试看门狗会把 compact 的重试计数无限归零；OpenAI chat 与 Grok 线的流没有空闲看门狗，上游返回 200 之后不再吐字节就会一直等下去（SDK 超时只覆盖到响应头）；第三方线的重试循环既不认 `Retry-After`，也不知道自己在跑 compact，一次 compact 最多可以发出 44 个请求。现在 compact 在所有 provider 上最多 3 次尝试，OpenAI chat 与 Grok 流补上与 Responses 线相同的空闲看门狗（`CLAUDE_STREAM_IDLE_TIMEOUT_MS`，默认 90 秒），第三方重试按 `Retry-After` 等待并封顶 60 秒；compact 之后的 SessionStart 钩子接收本轮的取消信号，Esc 能真正中断。
+- **新增两个 Remote Control 工具，并让 Brief 支持附件上传。** `PushNotification` 向远端设备推送标题与正文，`SendUserFile` 把文件送到远端会话，Brief 在 Remote Control 打开时把附件一并上传。两个新工具不在核心工具白名单里，经 SearchExtraTools 按需发现；没有可用的远端连接时它们会明确报告未送达，而不是静默丢弃。
+- **行为变更**：`occ remote-control` 不再执行 `happy acp -- occ --acp`，`HAPPY_SERVER_URL` 不再有意义，自托管改用 `OCC_REMOTE_CONTROL_URL`（旧键 `CLAUDE_BRIDGE_BASE_URL` 仍兼容）；旧配置键 `replBridgeEnabled` 自动迁移为 `remoteControlAtStartup`（`/config` 里的「Enable Remote Control for all sessions」）；`bridge_status` 系统消息不再写入会话 JSONL，因为它携带一次性的配对 URL。
+
 ## 2.46.0 - 2026-08-14
 
 - **非 Anthropic provider 不再收到用不上的 Anthropic 信息。** 此前无论会话跑在哪家模型上，系统提示都会告知 Claude 各档位的 model ID，以及桌面端、网页端这些 occ 并不具备的入口。在 OpenAI、Gemini、Grok、DeepSeek 等 provider 上那些 ID 解析成字面量后必然 404，模型却会把它们写进你的代码。现按会话实际服务的模型目录决定发不发。

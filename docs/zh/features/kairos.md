@@ -83,23 +83,16 @@ KAIROS 在系统提示中注入两大段落：
 
 ### 3.3 远程接入
 
-> **已变更（2026-07）**：KAIROS 原先通过自建的 Bridge Mode（`src/bridge/`）长轮询 claude.ai 服务器。`src/bridge/` 与 `BRIDGE_MODE` 已删除。
-
-现在的远程接入走 ACP：occ 作为 ACP agent（`occ --acp`），客户端由 [Happy](https://github.com/slopus/happy) 提供，`occ remote-control` 把两者接起来。
+KAIROS 使用 occ 的原生 Remote Control bridge。`useReplBridge` 把当前 REPL 与官方端点或自托管 RCS 同步，不会另起 ACP 会话。
 
 ```
-Happy 手机 App / Web
+浏览器 / Remote Control 客户端
       │
-      ▼ (E2E 加密，服务端可自托管)
+      ▼ WebSocket / SSE + HTTP
 ┌──────────────────────┐
-│  Happy Server        │
+│ Remote Control Server│  官方端点或自托管 RCS
 └──────────┬───────────┘
-           │ ACP over stdio
-           ▼
-┌──────────────────────┐
-│  occ ACP Agent       │  src/services/acp/
-└──────────┬───────────┘
-           │
+           │ 原生 bridge 协议
            ▼
 ┌──────────────────────┐
 │  REPL + Proactive    │  Tick 驱动自主工作
@@ -140,7 +133,7 @@ FEATURE_KAIROS=1 FEATURE_TOKEN_BUDGET=1 bun run dev
 
 - **Anthropic OAuth**：必须使用 claude.ai 订阅登录（非 API key）
 - **GrowthBook**：服务端特性门控
-- **远程接入**（可选）：Happy CLI（`npm install -g happy-coder`）
+- **远程接入**（可选）：原生 bridge；自托管时运行 `packages/remote-control-server/`
 
 ## 七、文件索引
 

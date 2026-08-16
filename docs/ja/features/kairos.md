@@ -83,23 +83,16 @@ KAIROS はシステムプロンプトに 2 つの主要セクションを注入�
 
 ### 3.3 リモートアクセス
 
-> **変更済み（2026-07）**：以前の KAIROS は独自の Bridge Mode（`src/bridge/`）を介し、claude.ai サーバーをロングポーリングしていました。`src/bridge/` と `BRIDGE_MODE` は削除済みです。
-
-現在のリモートアクセスは ACP を使用します。occ は ACP agent（`occ --acp`）として動作し、クライアントは [Happy](https://github.com/slopus/happy) が提供します。`occ remote-control` が両者を接続します。
+KAIROS は occ のネイティブ Remote Control bridge を使用します。`useReplBridge` が現在の REPL を公式 endpoint またはセルフホスト RCS と同期し、別の ACP セッションは起動しません。
 
 ```
-Happy モバイルアプリ / Web
+ブラウザー / Remote Control クライアント
       │
-      ▼（E2E 暗号化、サーバーはセルフホスト可能）
+      ▼ WebSocket / SSE + HTTP
 ┌──────────────────────┐
-│  Happy Server        │
+│ Remote Control Server│  公式 endpoint またはセルフホスト RCS
 └──────────┬───────────┘
-           │ ACP over stdio
-           ▼
-┌──────────────────────┐
-│  occ ACP Agent       │  src/services/acp/
-└──────────┬───────────┘
-           │
+           │ ネイティブ bridge プロトコル
            ▼
 ┌──────────────────────┐
 │  REPL + Proactive    │  Tick 駆動の自律作業
@@ -140,7 +133,7 @@ FEATURE_KAIROS=1 FEATURE_TOKEN_BUDGET=1 bun run dev
 
 - **Anthropic OAuth**：claude.ai サブスクリプションでのログインが必須（API key は不可）
 - **GrowthBook**：サーバー側の機能ゲート
-- **リモートアクセス**（任意）：Happy CLI（`npm install -g happy-coder`）
+- **リモートアクセス**（任意）：ネイティブ bridge。セルフホスト時は `packages/remote-control-server/` を実行
 
 ## 7. ファイル索引
 

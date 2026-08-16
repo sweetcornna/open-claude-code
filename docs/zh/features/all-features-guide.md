@@ -24,27 +24,34 @@
 
 ## 2. Remote Control 远程控制
 
-**Feature Flag**: `ACP`（默认编译进）
+**Feature Flag**: `BRIDGE_MODE`（默认编译进）
 
 ### 说明
-从手机或浏览器控制会话。occ 提供 ACP agent（`occ --acp`），客户端和中继交给 [Happy](https://github.com/slopus/happy)（MIT）—— 手机 App、Web、端到端加密、服务端可自托管。
+从手机或浏览器控制**当前 REPL 会话**。原生 bridge 同步已有对话、实时输出、远端输入、权限审批和中断；不会另起 ACP agent 会话。
+
+不配置任何环境变量时连接本项目运营的公共服务 `https://rc.cornna.xyz`（账号制，开放注册，首次使用弹注册 / 登录）。流量经该服务中转并存储在服务端，不是端到端加密，每个会话保留约最近 5,000 条事件；要自己掌控数据，用仓库内的 `packages/remote-control-server/` 自托管。
 
 ### 使用
 ```bash
-# 安装 Happy CLI（一次性）
-npm install -g happy-coder
+# 启动时控制当前会话（默认连公共服务，无需任何配置）
+occ --remote-control
 
-# 在项目目录里启动；等价于 happy acp -- <occ> --acp
-occ remote-control
+# 或在当前 REPL 内启用/断开
+/remote-control
 
-# 自托管中继
-HAPPY_SERVER_URL=https://happy.example.com occ remote-control
+# 连接自托管 RCS（CLAUDE_BRIDGE_BASE_URL 是仍然支持的旧键名）
+OCC_REMOTE_CONTROL_URL=https://rcs.example.com occ --remote-control
 ```
 
-### 命令
-- `occ remote-control` / `occ rc` / `occ remote` / `occ sync` / `occ bridge` — 同一个命令的别名
+打开终端输出的 URL 或扫二维码；首次连接会要求注册或登录。
 
-> occ 自建的 bridge、`packages/remote-control-server/`、`packages/acp-link/` 和 `BRIDGE_MODE` 已于 2026-07 删除。迁移见 [Remote Control 文档](./remote-control-self-hosting.md)。
+### 命令
+- `/remote-control [name]` — 连接或断开当前 REPL
+- `occ --remote-control [name]` / `occ --rc [name]` — 启动时连接当前 REPL
+- `occ remote-control` / `occ rc` / `occ remote` / `occ sync` / `occ bridge` — 把当前目录作为远程环境运行
+- `/remote-control-server` — 启动持久 Remote Control server
+
+完整部署和安全说明见 [Remote Control 文档](./remote-control-self-hosting.md)。
 
 ---
 

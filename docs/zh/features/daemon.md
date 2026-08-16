@@ -11,7 +11,7 @@
 
 DAEMON 将 occ 变为后台守护进程。主进程（supervisor）管理多个 worker 子进程的生命周期，通过文件系统状态文件进行通信。
 
-> **当前没有注册任何 supervisor worker。** 唯一的 worker `remoteControl` 是自建 bridge 的 headless 驱动，随 bridge 一起于 2026-07 删除（远程控制现在交给 Happy，见 [Remote Control](./remote-control-self-hosting.md)）。`DAEMON_WORKER_KINDS` 现在是空数组，`occ daemon start` 会明说这一点并直接返回。spawn / 退避 / parking / 状态文件这套机制完整保留，作为下一个长驻 worker 的扩展点。后台会话子命令（`daemon bg` / `attach` / `logs` / `kill`，由 `BG_SESSIONS` 门控）不受影响，照常可用。
+> **当前注册了 `remoteControl` supervisor worker。** 它通过 `runBridgeHeadless()` 连接官方端点或自托管 RCS，接收远程 session，并由 supervisor 负责崩溃重启、指数退避和永久错误 parking。后台会话子命令（`daemon bg` / `attach` / `logs` / `kill`，由 `BG_SESSIONS` 门控）与该 worker 独立。
 
 ## 二、实现架构
 
@@ -20,7 +20,7 @@ DAEMON 将 occ 变为后台守护进程。主进程（supervisor）管理多个 
 | 模块 | 文件 | 状态 |
 |------|------|------|
 | 守护主进程 | `src/daemon/main.ts` | **已实现** — Supervisor 含子命令、Worker 生命周期管理、指数退避重启 |
-| Worker 注册 | `src/daemon/workerRegistry.ts` | **已实现** — `DAEMON_WORKER_KINDS` 目前为空 |
+| Worker 注册 | `src/daemon/workerRegistry.ts` | **已实现** — 注册 `remoteControl` 并运行 `runBridgeHeadless()` |
 | Daemon 状态 | `src/daemon/state.ts` | **已实现** — PID/状态文件的读写与查询 |
 | CLI 路由 | `src/entrypoints/cli.tsx` | **布线** — `--daemon-worker` 和 `daemon` 子命令 |
 | 命令注册 | `src/commands.ts` | **布线** — DAEMON 门控 |

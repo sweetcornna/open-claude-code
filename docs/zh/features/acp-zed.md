@@ -157,12 +157,13 @@ client.on('sessionUpdate', (update) => {
 
 ## 五、和 Remote Control 的关系
 
-同一个 ACP agent 有两种用法：
+ACP 与 Remote Control 是两个独立入口：
 
-- **编辑器直连**（本文）—— Zed / JetBrains 直接 spawn `occ --acp`，走 stdio，不需要任何中间件。
-- **手机 / Web 远程** —— `occ remote-control` 把 `occ --acp` 交给 [Happy](https://github.com/slopus/happy)，由它提供客户端、端到端加密和（可自托管的）中继。见 [Remote Control](./remote-control-self-hosting.md)。
+- **编辑器直连**（本文）—— Zed / JetBrains spawn `occ --acp`，通过 stdio 创建或恢复 ACP session。
+- **控制当前终端会话** —— `occ --remote-control` 或 REPL 内的 `/remote-control` 挂载原生 bridge；远端输入、权限和中断都作用于当前 REPL，而不是创建新的 ACP session。
+- **常驻远程环境** —— `occ remote-control` 运行 headless bridge；不配置时连本项目运营的公共服务 `https://rc.cornna.xyz`，也可以用 `OCC_REMOTE_CONTROL_URL` 指向 `packages/remote-control-server/` 的自托管部署。
 
-occ 自己不再有远程控制的传输层实现：`packages/acp-link/`（WS↔ACP 代理）和 `packages/remote-control-server/` 已删除，原先用 `acp-link occ-bun -- --acp` 的场景改用 `happy acp -- occ --acp`（即 `occ remote-control`）。
+因此，需要保留当前终端对话连续性时不要用 ACP 客户端的 `session/new` 代替 `/remote-control`。部署见 [Remote Control](./remote-control-self-hosting.md)。
 
 ## 六、ACP 协议支持矩阵
 
