@@ -57,6 +57,7 @@ import {
   registerElicitationHandlers,
 } from './headlessMcpRuntime.js'
 import { reregisterChannelHandlerAfterReconnect } from './channels.js'
+import { forwardMessagesToBridge } from './headlessBridge.js'
 import {
   isMainThreadCommand,
   type HeadlessRunState,
@@ -343,6 +344,7 @@ export async function drainCommandQueue(
               })
             },
           })) {
+            forwardMessagesToBridge(state)
             if (message.type === 'result') {
               lastResultIsError = !!(message as Record<string, unknown>)
                 .is_error
@@ -416,6 +418,9 @@ export async function drainCommandQueue(
     for (const uuid of batchUuids) {
       notifyCommandLifecycle(uuid, 'completed')
     }
+
+    forwardMessagesToBridge(state)
+    state.bridgeHandle?.sendResult()
 
     if (feature('FILE_PERSISTENCE') && turnStartTime !== undefined) {
       void executeFilePersistence(

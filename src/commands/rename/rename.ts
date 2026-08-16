@@ -1,3 +1,4 @@
+import { feature } from 'bun:bundle'
 import type { UUID } from 'crypto'
 import { getSessionId } from '../../bootstrap/state.js'
 import type { ToolUseContext } from '../../Tool.js'
@@ -51,6 +52,26 @@ export async function call(
 
   // Always save the custom title (session name)
   await saveCustomTitle(sessionId, newName, fullPath)
+
+  if (feature('BRIDGE_MODE')) {
+    const bridgeSessionId = context.getAppState().replBridgeSessionId
+    if (bridgeSessionId) {
+      const [
+        { getBridgeAccessToken, getBridgeBaseUrl },
+        { updateBridgeSessionTitle },
+      ] = await Promise.all([
+        import('../../bridge/bridgeConfig.js'),
+        import('../../bridge/createSession.js'),
+      ])
+      // Account-mode servers hold the token in memory, not in the env, so ask
+      // for the resolved credential rather than the raw override.
+      const accessToken = getBridgeAccessToken()
+      void updateBridgeSessionTitle(bridgeSessionId, newName, {
+        baseUrl: getBridgeBaseUrl(),
+        getAccessToken: accessToken ? () => accessToken : undefined,
+      }).catch(() => {})
+    }
+  }
 
   // Also persist as the session's agent name for prompt-bar display
   await saveAgentName(sessionId, newName, fullPath)

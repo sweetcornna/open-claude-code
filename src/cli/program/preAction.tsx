@@ -12,6 +12,7 @@ import { migrateEnableAllProjectMcpServersToSettings } from 'src/migrations/migr
 import { migrateFennecToOpus } from 'src/migrations/migrateFennecToOpus.js';
 import { migrateLegacyOpusToCurrent } from 'src/migrations/migrateLegacyOpusToCurrent.js';
 import { migrateOpusToOpus1m } from 'src/migrations/migrateOpusToOpus1m.js';
+import { migrateReplBridgeEnabledToRemoteControlAtStartup } from 'src/migrations/migrateReplBridgeEnabledToRemoteControlAtStartup.js';
 import { migrateSonnet1mToSonnet45 } from 'src/migrations/migrateSonnet1mToSonnet45.js';
 import { migrateSonnet45ToSonnet46 } from 'src/migrations/migrateSonnet45ToSonnet46.js';
 import { resetAutoModeOptInForDefaultOffer } from 'src/migrations/resetAutoModeOptInForDefaultOffer.js';
@@ -149,7 +150,7 @@ function enforceManagedVersionGate(): void {
 
 // @[MODEL LAUNCH]: Consider any migrations you may need for model strings. See migrateSonnet1mToSonnet45.ts for an example.
 // Bump this when adding a new sync migration so existing users re-run the set.
-const CURRENT_MIGRATION_VERSION = 12;
+const CURRENT_MIGRATION_VERSION = 13;
 function runMigrations(): void {
   if (getGlobalConfig().migrationVersion !== CURRENT_MIGRATION_VERSION) {
     migrateBypassPermissionsAcceptedToSettings();
@@ -159,6 +160,7 @@ function runMigrations(): void {
     migrateLegacyOpusToCurrent();
     migrateSonnet45ToSonnet46();
     migrateOpusToOpus1m();
+    migrateReplBridgeEnabledToRemoteControlAtStartup();
     migrateDefaultTierSettingsToDefaultSlot();
     if (feature('TRANSCRIPT_CLASSIFIER')) {
       resetAutoModeOptInForDefaultOffer();

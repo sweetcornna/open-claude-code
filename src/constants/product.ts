@@ -5,6 +5,18 @@ export const CLAUDE_AI_BASE_URL = 'https://claude.ai'
 export const CLAUDE_AI_STAGING_BASE_URL = 'https://claude-ai.staging.ant.dev'
 export const CLAUDE_AI_LOCAL_BASE_URL = 'http://localhost:4000'
 
+const remoteSessionUrls = new Map<string, string>()
+
+export function setRemoteSessionUrl(sessionId: string, url: string): void {
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return
+    remoteSessionUrls.set(sessionId, parsed.toString())
+  } catch {
+    // Ignore malformed URLs returned by a bridge server.
+  }
+}
+
 /**
  * Determine if we're in a staging environment for remote sessions.
  * Checks session ID format and ingress URL.
@@ -64,12 +76,10 @@ export function getClaudeAiBaseUrl(
 /**
  * Get the full session URL for a remote session.
  *
- * The cse_→session_ translation is a compat shim. Worker endpoints
- * (/v1/code/sessions/{id}/worker/*) want `cse_*` but the claude.ai frontend
- * routes on `session_*` (compat/convert.go:27 validates TagSession). Same UUID
- * body, different tag prefix. No-op for IDs already in `session_*` form. See
- * toCompatSessionId in src/utils/sessionIdCompat.ts for the canonical helper
- * (lazy-required here to keep constants/ leaf-of-DAG at module-load time).
+ * The cse_→session_ translation is gated by the bridge compat shim. Worker
+ * endpoints want `cse_*`, while client-facing routes currently expect the same
+ * UUID body tagged as `session_*`. The lazy require keeps constants/ at the
+ * leaf of the module DAG.
  */
 export function getRemoteSessionUrl(
   sessionId: string,
@@ -77,14 +87,18 @@ export function getRemoteSessionUrl(
 ): string {
   /* eslint-disable @typescript-eslint/no-require-imports */
   const { toCompatSessionId } =
-    require('../utils/session/sessionIdCompat.js') as typeof import('../utils/session/sessionIdCompat.js')
+    require('../bridge/sessionIdCompat.js') as typeof import('../bridge/sessionIdCompat.js')
+  const { isSelfHostedBridgeBaseUrl, resolveBridgeBaseUrl } =
+    require('../bridge/bridgeBaseUrl.js') as typeof import('../bridge/bridgeBaseUrl.js')
   /* eslint-enable @typescript-eslint/no-require-imports */
   const compatId = toCompatSessionId(sessionId)
-  // Use CLAUDE_BRIDGE_BASE_URL from env if available, otherwise fall back to default logic
-  const bridgeBaseUrl = process.env.CLAUDE_BRIDGE_BASE_URL
-  if (bridgeBaseUrl) {
-    const base = bridgeBaseUrl.replace(/\/+$/, '')
-    return `${base}/code/${compatId}`
+  const serverIssuedUrl =
+    remoteSessionUrls.get(sessionId) ?? remoteSessionUrls.get(compatId)
+  if (serverIssuedUrl) return serverIssuedUrl
+  // Anything that is not Anthropic's bridge serves its own web UI, so the
+  // session lives under the bridge origin rather than on claude.ai.
+  if (isSelfHostedBridgeBaseUrl()) {
+    return `${resolveBridgeBaseUrl()}/code/${compatId}`
   }
   const baseUrl = getClaudeAiBaseUrl(compatId, ingressUrl)
   return `${baseUrl}/code/${compatId}`

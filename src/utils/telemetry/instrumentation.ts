@@ -18,6 +18,7 @@ import {
   ConsoleMetricExporter,
   MeterProvider,
   PeriodicExportingMetricReader,
+  type PushMetricExporter,
 } from '@opentelemetry/sdk-metrics'
 import {
   BasicTracerProvider,
@@ -58,7 +59,6 @@ import { getSettings_DEPRECATED } from '../settings/settings.js'
 import { jsonStringify } from './slowOperations.js'
 import { profileCheckpoint } from './startupProfiler.js'
 import { isBetaTracingEnabled } from './betaSessionTracing.js'
-import { BigQueryMetricsExporter } from './bigqueryExporter.js'
 import { ClaudeCodeDiagLogger } from './logger.js'
 import { initializePerfettoTracing } from './perfettoTracing.js'
 import {
@@ -327,6 +327,12 @@ export function isTelemetryEnabled() {
 }
 
 function getBigQueryExportingReader() {
+  /* eslint-disable @typescript-eslint/no-require-imports */
+  const { BigQueryMetricsExporter } = require('./bigqueryExporter.js') as {
+    BigQueryMetricsExporter: new () => PushMetricExporter
+  }
+  /* eslint-enable @typescript-eslint/no-require-imports */
+
   const bigqueryExporter = new BigQueryMetricsExporter()
   return new PeriodicExportingMetricReader({
     exporter: bigqueryExporter,

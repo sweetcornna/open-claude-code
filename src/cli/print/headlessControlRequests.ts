@@ -665,6 +665,26 @@ export async function handleHeadlessControlRequest(
         sendControlResponseError(state, msg, errorMessage(e))
       }
     })()
+  } else if (req.subtype === 'remote_control') {
+    if (feature('BRIDGE_MODE')) {
+      const { handleHeadlessRemoteControl } = await import(
+        './headlessBridge.js'
+      )
+      await handleHeadlessRemoteControl(
+        state,
+        msg,
+        req.enabled === true,
+        () => {
+          void runHeadlessTurn(state)
+        },
+      )
+    } else {
+      sendControlResponseError(
+        state,
+        msg,
+        'Remote Control is not available in this build.',
+      )
+    }
   } else if (
     (feature('PROACTIVE') || feature('KAIROS')) &&
     (msg.request as { subtype: string }).subtype === 'set_proactive'

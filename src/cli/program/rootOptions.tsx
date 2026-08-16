@@ -517,6 +517,19 @@ export function applyExtraRootOptions(program: CommanderCommand): void {
   program.addOption(
     new Option('--remote [description]', 'Create a remote session with the given description').hideHelp(),
   );
+  if (feature('BRIDGE_MODE')) {
+    program.addOption(
+      new Option(
+        '--remote-control [name]',
+        'Start an interactive session with Remote Control enabled (optionally named)',
+      )
+        .argParser(value => value || true)
+        .hideHelp(),
+    );
+    program.addOption(
+      new Option('--rc [name]', 'Alias for --remote-control').argParser(value => value || true).hideHelp(),
+    );
+  }
   if (feature('HARD_FAIL')) {
     program.addOption(new Option('--hard-fail', 'Crash on logError calls instead of silently logging').hideHelp());
   }

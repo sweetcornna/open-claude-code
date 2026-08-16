@@ -1,3 +1,4 @@
+import { feature } from 'bun:bundle';
 import * as React from 'react';
 import { Text } from '@anthropic/ink';
 import { refreshGrowthBookAfterAuthChange } from '../../services/analytics/growthbook.js';
@@ -161,6 +162,10 @@ function clearAnthropicCredentialSettings(): void {
 export async function clearAuthRelatedCaches(): Promise<void> {
   // Clear the OAuth token cache
   getClaudeAIOAuthTokens.cache?.clear?.();
+  if (feature('BRIDGE_MODE')) {
+    const { clearTrustedDeviceTokenCache } = await import('../../bridge/trustedDevice.js');
+    clearTrustedDeviceTokenCache();
+  }
   clearBetasCaches();
   clearToolSchemaCache();
 

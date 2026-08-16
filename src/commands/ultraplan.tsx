@@ -1,3 +1,4 @@
+import { REMOTE_CONTROL_DISCONNECTED_MSG } from '../bridge/types.js';
 import type { Command } from '../commands.js';
 import { DIAMOND_OPEN } from '../constants/figures.js';
 import { getRemoteSessionUrl } from '../constants/product.js';
@@ -190,8 +191,9 @@ function startDetachedPoll(
 
 // Renders immediately so the terminal doesn't appear hung during the
 // multi-second teleportToRemote round-trip.
-function buildLaunchMessage(): string {
-  return `${DIAMOND_OPEN} ultraplan\nStarting Claude Code on the web…`;
+function buildLaunchMessage(disconnectedBridge?: boolean): string {
+  const prefix = disconnectedBridge ? `${REMOTE_CONTROL_DISCONNECTED_MSG} ` : '';
+  return `${DIAMOND_OPEN} ultraplan\n${prefix}Starting Claude Code on the web…`;
 }
 
 function buildSessionReadyMessage(url: string): string {
@@ -258,6 +260,7 @@ export async function launchUltraplan(opts: {
   getAppState: () => AppState;
   setAppState: (f: (prev: AppState) => AppState) => void;
   signal: AbortSignal;
+  disconnectedBridge?: boolean;
   /**
    * Called once teleportToRemote resolves with a session URL. Callers that
    * have setMessages (REPL) append this as a second transcript message so the
@@ -267,7 +270,8 @@ export async function launchUltraplan(opts: {
    */
   onSessionReady?: (msg: string) => void;
 }): Promise<string> {
-  const { blurb, seedPlan, promptIdentifier, getAppState, setAppState, signal, onSessionReady } = opts;
+  const { blurb, seedPlan, promptIdentifier, getAppState, setAppState, signal, disconnectedBridge, onSessionReady } =
+    opts;
 
   const { ultraplanSessionUrl: active, ultraplanLaunching } = getAppState();
   if (active || ultraplanLaunching) {
@@ -310,7 +314,7 @@ export async function launchUltraplan(opts: {
     signal,
     onSessionReady,
   });
-  return buildLaunchMessage();
+  return buildLaunchMessage(disconnectedBridge);
 }
 
 async function launchDetached(opts: {

@@ -473,10 +473,10 @@ describe('occ update isolation', () => {
   })
 
   test('Remote Control guidance invokes only the occ binary', () => {
-    const launcherSource = readSource('cli/remoteControlLauncher.ts')
+    const bridgeEnabledSource = readSource('bridge/bridgeEnabled.ts')
 
-    expect(launcherSource).toMatch(/\\`\$\{BIN_NAME\} remote-control\\`/)
-    expect(launcherSource).toMatch(/\\`\$\{BIN_NAME\} --acp\\`/)
-    expect(launcherSource).not.toMatch(/`claude (?:remote-control|--acp)/)
+    expect(bridgeEnabledSource).toMatch(/\\`\$\{BIN_NAME\} auth login\\`/)
+    expect(bridgeEnabledSource).toMatch(/\\`\$\{BIN_NAME\} update\\`/)
+    expect(bridgeEnabledSource).not.toMatch(/`claude (?:auth login|update)/)
   })
 })

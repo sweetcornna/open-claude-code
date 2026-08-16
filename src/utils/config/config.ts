@@ -126,6 +126,7 @@ export type ProjectConfig = {
     sessionId: string
     hookBased?: boolean
   }
+  remoteControlSpawnMode?: 'same-dir' | 'worktree'
 }
 
 const DEFAULT_PROJECT_CONFIG: ProjectConfig = {
@@ -405,6 +406,11 @@ export type GlobalConfig = {
   effortCalloutDismissed?: boolean // v1 - legacy, read to suppress v2 for Pro users who already saw it
   effortCalloutV2Dismissed?: boolean
 
+  // Native Remote Control first-use dialog and cross-process OAuth backoff.
+  remoteDialogSeen?: boolean
+  bridgeOauthDeadExpiresAt?: number
+  bridgeOauthDeadFailCount?: number
+
   // Desktop upsell startup dialog tracking
   desktopUpsellSeenCount?: number // Total showings (max 3)
   desktopUpsellDismissed?: boolean // "Don't ask again" picked
@@ -518,6 +524,9 @@ export type GlobalConfig = {
   // Epoch ms when background refreshes last ran (fast mode, quota, passes, client data).
   // Used with tengu_cicada_nap_ms to throttle API calls
   startupPrefetchedAt?: number
+
+  // undefined follows the build/gate default; explicit false is an opt-out.
+  remoteControlAtStartup?: boolean
 
   // Cached extra usage disabled reason from the last API response
   // undefined = no cache, null = extra usage enabled, string = disabled reason.
@@ -638,6 +647,7 @@ export const GLOBAL_CONFIG_KEYS = [
   'copyOnSelect',
   'permissionExplainerEnabled',
   'prStatusFooterEnabled',
+  'remoteControlAtStartup',
 ] as const
 
 export type GlobalConfigKey = (typeof GLOBAL_CONFIG_KEYS)[number]
@@ -1085,6 +1095,21 @@ export function getGlobalConfig(): GlobalConfig {
       getConfig(getGlobalClaudeFile(), createDefaultGlobalConfig),
     )
   }
+}
+
+export function getRemoteControlAtStartup(): boolean {
+  const explicit = getGlobalConfig().remoteControlAtStartup
+  if (explicit !== undefined) return explicit
+  if (feature('CCR_AUTO_CONNECT')) {
+    /* eslint-disable @typescript-eslint/no-require-imports */
+    const { getCcrAutoConnectDefault } =
+      require('../../bridge/bridgeEnabled.js') as {
+        getCcrAutoConnectDefault(): boolean
+      }
+    /* eslint-enable @typescript-eslint/no-require-imports */
+    return getCcrAutoConnectDefault()
+  }
+  return false
 }
 
 export function getCustomApiKeyStatus(

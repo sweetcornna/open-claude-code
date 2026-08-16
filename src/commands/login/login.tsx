@@ -66,6 +66,11 @@ export async function call(onDone: LocalJSXCommandOnDone, context: LocalJSXComma
           resetUserCache();
           // Refresh GrowthBook after login to get updated feature flags (e.g., for claude.ai MCPs)
           refreshGrowthBookAfterAuthChange();
+          if (feature('BRIDGE_MODE')) {
+            const { clearTrustedDeviceToken, enrollTrustedDevice } = await import('../../bridge/trustedDevice.js');
+            clearTrustedDeviceToken();
+            void enrollTrustedDevice();
+          }
           // Reset killswitch gate checks and re-run with new org
           resetAutoModeGateCheck();
           const appState = context.getAppState();

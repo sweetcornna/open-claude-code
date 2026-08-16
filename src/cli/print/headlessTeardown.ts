@@ -10,6 +10,7 @@
 import { statusListeners } from 'src/services/claudeAiLimits.js'
 import { finalizePendingAsyncHooks } from 'src/utils/hooks/AsyncHookRegistry.js'
 import { sleep } from 'src/utils/process/sleep.js'
+import { teardownHeadlessBridge } from './headlessBridge.js'
 import type { HeadlessRunState } from './headlessRunState.js'
 
 export async function finalizeHeadlessOutput(
@@ -26,5 +27,6 @@ export async function finalizeHeadlessOutput(
   state.unsubscribeSkillChanges()
   state.unsubscribeAuthStatus?.()
   statusListeners.delete(state.rateLimitListener)
+  await teardownHeadlessBridge(state)
   state.output.done()
 }

@@ -15,6 +15,8 @@ type SessionStartHooksOptions = {
   sessionId?: string
   agentType?: string
   model?: string
+  signal?: AbortSignal
+  timeoutMs?: number
   forceSyncExecution?: boolean
 }
 
@@ -39,6 +41,8 @@ export async function processSessionStartHooks(
     sessionId,
     agentType,
     model,
+    signal,
+    timeoutMs,
     forceSyncExecution,
   }: SessionStartHooksOptions = {},
 ): Promise<HookResultMessage[]> {
@@ -133,8 +137,8 @@ export async function processSessionStartHooks(
     sessionId,
     resolvedAgentType,
     model,
-    undefined,
-    undefined,
+    signal,
+    timeoutMs,
     forceSyncExecution,
   )) {
     if (hookResult.message) {

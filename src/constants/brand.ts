@@ -46,6 +46,20 @@ export const DISPLAY_NAME = 'Open Claude Code'
  */
 export const NPM_PACKAGE_NAME = '@sweetcornna/open-claude-code'
 
+/**
+ * Remote Control server occ talks to when nothing is configured.
+ *
+ * This is the project-operated public RCS (accounts, open registration) — the
+ * reason `/remote-control` works out of the box instead of dead-ending on a
+ * claude.ai entitlement occ can never satisfy. Override it with
+ * `OCC_REMOTE_CONTROL_URL` (or the older `CLAUDE_BRIDGE_BASE_URL`) to point at
+ * your own deployment; see docs/zh/features/remote-control-self-hosting.md.
+ *
+ * Traffic is relayed and stored server-side, so this is a hosting choice, not
+ * an end-to-end-encrypted channel — hence the override being first-class.
+ */
+export const DEFAULT_REMOTE_CONTROL_URL = 'https://rc.cornna.xyz'
+
 /** OS-level deep-link identity owned exclusively by occ. */
 export const DEEP_LINK_PROTOCOL = 'occ-cli'
 export const MACOS_DEEP_LINK_BUNDLE_ID =
