@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle';
 import React, { useContext, useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from 'react';
 import { MailboxProvider } from '../context/mailbox.js';
 import { useSettingsChange } from '../hooks/useSettingsChange.js';
@@ -11,24 +10,15 @@ import { applySettingsChange } from '../utils/settings/applySettingsChange.js';
 import type { SettingSource } from '../utils/settings/constants.js';
 import { createStore } from './store.js';
 
-// DCE: voice context is ant-only. External builds get a noop provider that
-// still wraps children in VoiceContext so useVoiceState never throws.
+// Always use the real VoiceProvider (idle store). A previous "noop" branch
+// did `require('../context/voice.js').VoiceContext` when VOICE_MODE was off;
+// under Bun --compile that export can be DCE'd to undefined, crashing
+// interactive UI with: VoiceContext2.Provider (Windows portable build).
+// VoiceProvider itself is lightweight; actual mic code stays behind
+// feature('VOICE_MODE') in hooks/components.
 /* eslint-disable @typescript-eslint/no-require-imports */
-const VoiceProvider: (props: { children: React.ReactNode }) => React.ReactNode = feature('VOICE_MODE')
-  ? require('../context/voice.js').VoiceProvider
-  : (() => {
-      const { VoiceContext } = require('../context/voice.js');
-      const noopStore = createStore({
-        voiceState: 'idle' as const,
-        voiceError: null as string | null,
-        voiceInterimTranscript: '',
-        voiceAudioLevels: [] as number[],
-        voiceWarmingUp: false,
-      });
-      return ({ children }: { children: React.ReactNode }) => (
-        <VoiceContext.Provider value={noopStore}>{children}</VoiceContext.Provider>
-      );
-    })();
+const VoiceProvider: (props: { children: React.ReactNode }) => React.ReactNode =
+  require('../context/voice.js').VoiceProvider;
 
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { type AppState, type AppStateStore, getDefaultAppState } from './AppStateStore.js';
